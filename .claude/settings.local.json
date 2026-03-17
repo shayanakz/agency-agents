@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x /Users/shayan/dev/agency-agents/scripts/validate-workflow.sh)"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+# Runtime configuration for the Idea-to-Production pipeline.
+# API keys are read from environment variables, not stored here.
+
+runtime:
+  checkpoint:
+    backend: sqlite
+    sqlite_path: ./state/checkpoints.db
+
+  llm_defaults:
+    anthropic:
+      api_key_env: ANTHROPIC_API_KEY
+    openai:
+      api_key_env: OPENAI_API_KEY
+    google:
+      api_key_env: GOOGLE_API_KEY
+
+  supabase:
+    url_env: SUPABASE_URL
+    key_env: SUPABASE_SERVICE_KEY
+    default_url: "http://localhost:54321"
+
+  artifacts_dir: ./artifacts
+  max_concurrent_agents: 1
+
+  logging:
+    level: INFO
+    audit_trail: true

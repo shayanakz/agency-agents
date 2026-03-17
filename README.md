@@ -603,6 +603,26 @@ When you add new agents or edit existing ones, regenerate all integration files:
 
 ---
 
+## 🔄 Workflows
+
+The `workflows/` directory contains a strict, database-backed multi-agent workflow system powered by **LangGraph** and **Supabase**. It transforms the Agency's agent personas into an executable pipeline that takes ideas from brainstorm to production.
+
+- **[Idea-to-Production Pipeline](workflows/)** — 8 agents, 4 phases, quality gates, retry loops
+- **Database-backed config** — edit agents, personas, gates via Supabase Studio (no redeploy)
+- **Two execution modes** — `llm_api` for thinking agents, `claude_code` for coding agents
+- **Persona swapping** — attach any Agency .md persona to any workflow agent at runtime
+
+```bash
+# Quick start
+cd workflows/supabase && supabase start && supabase db push
+cd ../runtime && pip install -r requirements.txt
+python -m runtime.run --project "MyApp" --idea "build me a ..." --stream
+```
+
+See the [Workflows README](workflows/README.md) for full setup and architecture details.
+
+---
+
 ## 🗺️ Roadmap
 
 - [ ] Interactive agent selector web tool

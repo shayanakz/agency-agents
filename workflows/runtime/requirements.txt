@@ -4,6 +4,9 @@ langchain-core>=0.3.0
 pydantic>=2.0
 pyyaml>=6.0
 rich>=13.0
+# Dashboard (real-time web UI)
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
 # Optional: only needed if using llm_api execution mode (API keys required)
 # langchain-anthropic>=0.3.0
 # langchain-openai>=0.2.0

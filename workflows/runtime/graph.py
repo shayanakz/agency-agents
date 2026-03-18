@@ -67,20 +67,6 @@ def route_after_schema_verify(state: PipelineState) -> str:
     return "planning_agent"
 
 
-def route_after_code_review(state: PipelineState) -> str:
-    # Code review ALWAYS flows forward to QA. It records its verdict
-    # but does NOT trigger retries — that's reality_check's job.
-    # This prevents unbounded implement↔code_review loops.
-    return "qa_agent"
-
-
-def route_after_qa(state: PipelineState) -> str:
-    # ALWAYS go to reality_check after QA — reality_check is the proper
-    # gate that decides retry vs advance. QA failing should not bypass
-    # reality_check, otherwise the retry loop has no attempt counter.
-    return "reality_check_agent"
-
-
 def route_after_reality_check(state: PipelineState) -> str:
     verdict = state.get("reality_verdict", {})
     status = verdict.get("status", "NEEDS_WORK") if isinstance(verdict, dict) else "NEEDS_WORK"

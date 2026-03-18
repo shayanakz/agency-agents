@@ -11,15 +11,17 @@ from .base import build_inputs_summary, make_node
 def _build_prompt(agent: dict, state: PipelineState) -> str:
     architecture = state.get("architecture", {})
     deploy_target = architecture.get("deployment_target", "vercel")
+    project_dir = state.get("project_dir", "./projects/unnamed")
 
     parts = [
         f"Deploy project '{state.get('project_name', 'Unknown')}' to {deploy_target}.\n",
+        f"**Project directory:** `{project_dir}`  ← source to deploy",
         f"**Deployment target:** {deploy_target}",
         f"**Tasks completed:** {state.get('total_tasks', 0)}",
         f"**Reality check status:** {state.get('reality_verdict', {}).get('status', 'N/A')}",
         "\nYou MUST:",
-        "1. Generate deployment config for the target",
-        "2. Execute deployment commands",
+        "1. Run deployment commands from the project directory",
+        "2. Generate deployment config for the target",
         "3. Run health checks",
         "4. Produce rollback instructions regardless of outcome",
         "5. Log the full deployment output",
@@ -29,7 +31,15 @@ def _build_prompt(agent: dict, state: PipelineState) -> str:
 
 
 def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, Any]:
-    deployment_manifest = parsed.get("deployment_manifest", parsed)
+    # Guard against parse failures
+    if parsed.get("_parse_error"):
+        deployment_manifest = {
+            "status": "failed",
+            "error": "Deploy agent output could not be parsed as JSON",
+            "_parse_error": True,
+        }
+    else:
+        deployment_manifest = parsed.get("deployment_manifest", parsed)
 
     output_dir = Path(state.get("output_dir", "./artifacts"))
     results_dir = output_dir / "test-results"

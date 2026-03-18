@@ -18,8 +18,9 @@ class PhaseState(TypedDict, total=False):
 class PipelineState(TypedDict, total=False):
     # ── Identity ────────────────────────────────────────────────
     project_name: str
+    project_dir: str  # Dedicated directory for all project source code
     ideas: list[str]
-    output_dir: str
+    output_dir: str   # Artifacts base (docs, test-results, memory)
     workflow_id: str
     run_id: str  # UUID from pipeline_runs table
     mode: Literal["supervised", "autonomous"]
@@ -55,11 +56,21 @@ class PipelineState(TypedDict, total=False):
     # ── Retry tracking ──────────────────────────────────────────
     attempt_count: int
     max_attempts: int
-    schema_retry_count: int
     previous_outputs: list[dict[str, Any]]  # outputs from previous attempts (retry context)
+
+    # ── Schema verification tracking ─────────────────────────────
+    schema_valid: Optional[bool]
+    schema_issues: Optional[list[dict[str, Any]]]
+    schema_retry_count: int
 
     # ── Session tracking (for coding agents with --resume) ────
     session_ids: dict[str, str]  # agent_id → Claude Code session_id
+
+    # ── Model overrides (from UI or CLI) ───────────────────────
+    # Maps agent_id -> partial model_config dict.
+    # Example: {"brainstorm_agent": {"model": "sonnet"}, "__all__": {"model": "opus"}}
+    # Per-agent overrides take precedence over __all__.
+    model_overrides: Optional[dict[str, dict[str, Any]]]
 
     # ── Observability ───────────────────────────────────────────
     messages: list[str]

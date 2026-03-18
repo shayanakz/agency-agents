@@ -8,12 +8,16 @@ The DB index enables fast lookups by project, agent, and tags.
 """
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from . import db
+from .events import EventType, PipelineEvent, get_event_bus
+
+logger = logging.getLogger("pipeline.memory")
 
 # ── File I/O ────────────────────────────────────────────────────
 
@@ -99,7 +103,7 @@ def save_memory(
     file_content = f"{frontmatter}\n\n{content}\n"
     filepath.write_text(file_content, encoding="utf-8")
 
-    # Index in Supabase
+    # Index in Supabase — file is the source of truth, DB is for querying
     relative_path = str(filepath.relative_to(Path(output_dir)))
     try:
         db.index_memory(
@@ -110,8 +114,19 @@ def save_memory(
             tags=tags,
             summary=summary,
         )
-    except Exception:
-        pass  # File is saved even if indexing fails
+    except Exception as exc:
+        # File is saved even if indexing fails, but we emit an event
+        # so the issue is visible rather than silently swallowed
+        logger.warning("Memory indexing failed for %s: %s", relative_path, exc)
+        get_event_bus().emit(PipelineEvent(
+            event_type=EventType.MEMORY_SAVE_ERROR,
+            agent_id=agent_id,
+            data={
+                "operation": "index_memory",
+                "file_path": relative_path,
+                "error": str(exc),
+            },
+        ))
 
     return str(filepath)
 
@@ -143,8 +158,8 @@ def load_project_memories(
                 })
         if memories:
             return memories[:limit]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("DB memory index unavailable for project %s, falling back to disk: %s", project_name, exc)
 
     # Fallback: scan directory
     project_dir = Path(output_dir) / "memory" / "projects" / _slugify(project_name)
@@ -183,8 +198,8 @@ def load_agent_memories(
                 })
         if memories:
             return memories[:limit]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("DB memory index unavailable for agent %s, falling back to disk: %s", agent_id, exc)
 
     # Fallback: scan directory
     agent_dir = Path(output_dir) / "memory" / "agents" / _slugify(agent_id)
@@ -247,17 +262,25 @@ def extract_memories_from_output(
     """
     memories = []
 
-    # Brainstorm: save key decisions
+    # Brainstorm: save the spec decisions (tech stack + out_of_scope boundary)
     if agent_id == "brainstorm_agent":
         brief = parsed_output.get("research_brief", {})
         if isinstance(brief, dict):
-            tech = brief.get("technical_recommendations", "")
+            tech = brief.get("tech_stack") or brief.get("technical_recommendations", "")
             if tech:
                 memories.append({
                     "memory_type": "project",
-                    "summary": f"Technical stack recommendation: {str(tech)[:80]}",
-                    "content": str(tech),
+                    "summary": f"Tech stack: {json.dumps(tech)[:80]}",
+                    "content": json.dumps(tech, indent=2) if isinstance(tech, dict) else str(tech),
                     "tags": ["architecture", "stack-decision"],
+                })
+            out_of_scope = brief.get("out_of_scope", [])
+            if out_of_scope:
+                memories.append({
+                    "memory_type": "project",
+                    "summary": f"Out of scope: {', '.join(out_of_scope[:3])}",
+                    "content": "\n".join(f"- {item}" for item in out_of_scope),
+                    "tags": ["scope", "out-of-scope"],
                 })
 
     # Planning: save architecture decisions

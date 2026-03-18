@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Dashboard</title>
+<style>
+/* ── Reset & Variables ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --bg-surface: #161b22;
+  --bg-card: #1c2129;
+  --bg-hover: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --text-muted: #484f58;
+  --blue: #58a6ff;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --orange: #db6d28;
+  --red: #f85149;
+  --purple: #bc8cff;
+  --cyan: #39d2c0;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+html, body { height: 100%; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.header .logo {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.header .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.header .dot.error { background: var(--red); }
+
+.header input[type="text"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  outline: none;
+}
+.header input[type="text"]:focus { border-color: var(--blue); }
+.header input[name="project"] { width: 120px; }
+.header input[name="idea"] { flex: 1; min-width: 200px; }
+
+.header select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.btn-launch {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  padding: 6px 18px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-launch:hover { opacity: 0.9; }
+.btn-launch:disabled { opacity: 0.5; cursor: default; }
+
+.btn-stop {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: none;
+}
+.btn-stop:hover { opacity: 0.9; }
+.btn-stop:disabled { opacity: 0.5; }
+
+/* ── Project Info Bar ──────────────────────────────── */
+.project-bar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.project-bar .dir {
+  font-family: var(--mono);
+  color: var(--cyan);
+  font-size: 12px;
+}
+.project-bar .label { color: var(--text-dim); }
+
+/* ── Main Layout ───────────────────────────────────── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar (Progress Steps) ──────────────────────── */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--bg-surface);
+}
+
+.stage-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: background 0.15s;
+  position: relative;
+}
+.stage-item:hover { background: var(--bg-hover); }
+.stage-item.selected { background: var(--bg-hover); }
+
+.stage-icon {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+.stage-item.pending .stage-icon { border-color: var(--text-muted); color: var(--text-muted); }
+.stage-item.active .stage-icon {
+  border-color: var(--blue);
+  color: var(--blue);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.stage-item.complete .stage-icon { border-color: var(--green); background: var(--green); color: #fff; }
+.stage-item.failed .stage-icon { border-color: var(--red); background: var(--red); color: #fff; }
+.stage-item.retry .stage-icon { border-color: var(--orange); color: var(--orange); }
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(88,166,255,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(88,166,255,0); }
+}
+
+.stage-info { flex: 1; min-width: 0; }
+.stage-name { font-size: 13px; font-weight: 500; line-height: 1.3; }
+.stage-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.stage-connector {
+  position: absolute;
+  left: 23px;
+  top: 34px;
+  bottom: -12px;
+  width: 2px;
+  background: var(--border);
+}
+.stage-item:last-child .stage-connector { display: none; }
+.stage-item.complete .stage-connector { background: var(--green); }
+.stage-item.active .stage-connector { background: var(--blue); }
+
+/* ── Content Panel ─────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+}
+
+.content-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim);
+  gap: 12px;
+}
+.content-empty .icon { font-size: 48px; opacity: 0.3; }
+.content-empty .text { font-size: 15px; }
+
+/* ── Stage Content Cards ───────────────────────────── */
+.stage-card {
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+.stage-card.visible { display: block; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+
+.stage-header {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.stage-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+.stage-thinking {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.stage-thinking.visible { display: flex; }
+
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.stage-output { margin-top: 16px; }
+
+/* ── Rendered Output Styles ────────────────────────── */
+.output-section {
+  margin-bottom: 20px;
+}
+.output-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.output-section p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.output-section ul {
+  list-style: none;
+  padding: 0;
+}
+.output-section li {
+  padding: 6px 0;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.output-section li:last-child { border-bottom: none; }
+
+.feature-bullet {
+  color: var(--blue);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.task-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+.task-card .task-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.task-card .task-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.task-card .task-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-pass { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge-fail { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge-warn { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge-info { background: rgba(88,166,255,0.15); color: var(--blue); }
+
+.tech-stack {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tech-tag {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  color: var(--purple);
+}
+
+.file-tree {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.8;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.file-tree .file { color: var(--cyan); }
+
+/* ── Completion Card ───────────────────────────────── */
+.completion-card {
+  background: linear-gradient(135deg, rgba(63,185,80,0.1), rgba(88,166,255,0.1));
+  border: 1px solid var(--green);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-top: 20px;
+  display: none;
+}
+.completion-card.visible { display: block; }
+.completion-card h2 {
+  color: var(--green);
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.completion-card .stat {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+  padding: 4px 0;
+}
+.completion-card .stat-label { color: var(--text-dim); min-width: 120px; }
+.completion-card .stat-value { font-family: var(--mono); color: var(--cyan); }
+
+/* ── Error Banner ──────────────────────────────────── */
+.error-banner {
+  display: none;
+  background: rgba(248,81,73,0.1);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 16px;
+}
+.error-banner.visible { display: block; }
+.error-banner h3 { color: var(--red); margin-bottom: 8px; font-size: 15px; }
+.error-banner p { color: var(--text); font-size: 14px; }
+
+/* ── Developer Log Drawer ──────────────────────────── */
+.dev-drawer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.dev-toggle:hover { color: var(--text); }
+.dev-toggle .arrow { transition: transform 0.2s; }
+.dev-toggle .arrow.open { transform: rotate(180deg); }
+
+.dev-content {
+  display: none;
+  max-height: 250px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.dev-content.open { display: block; }
+
+.dev-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 16px;
+  font-size: 11px;
+  font-family: var(--mono);
+  border-bottom: 1px solid var(--border);
+}
+.dev-row:hover { background: var(--bg-hover); }
+.dev-time { color: var(--text-muted); width: 80px; flex-shrink: 0; }
+.dev-type { width: 100px; flex-shrink: 0; }
+.dev-agent { color: var(--purple); width: 120px; flex-shrink: 0; }
+.dev-detail { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-dur { color: var(--text-muted); width: 60px; text-align: right; flex-shrink: 0; }
+
+.dev-type.start { color: var(--blue); }
+.dev-type.complete { color: var(--green); }
+.dev-type.error { color: var(--red); }
+.dev-type.gate { color: var(--yellow); }
+.dev-type.llm { color: var(--purple); }
+.dev-type.mem { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────── -->
+<div class="header">
+  <div class="logo">
+    <span class="dot" id="statusDot"></span>
+    Pipeline
+  </div>
+  <form id="ideaForm" style="display:flex;align-items:center;gap:8px;flex:1;">
+    <input type="text" name="project" placeholder="Project name" value="MyApp">
+    <input type="text" name="idea" placeholder="Describe your idea..." autocomplete="off">
+    <select name="mode">
+      <option value="autonomous">Autonomous</option>
+      <option value="supervised">Supervised</option>
+    </select>
+    <button type="submit" class="btn-launch" id="launchBtn">Launch</button>
+  </form>
+  <button class="btn-stop" id="stopBtn">Stop</button>
+</div>
+
+<!-- ── Project Info Bar ────────────────────────────── -->
+<div class="project-bar" id="projectBar">
+  <span class="label">Project:</span>
+  <span class="dir" id="projectDir"></span>
+</div>
+
+<!-- ── Main ────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar"></div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+    <div class="content-empty" id="emptyState">
+      <div class="icon">&#9889;</div>
+      <div class="text">Describe an idea and hit Launch to start building</div>
+    </div>
+
+    <!-- One card per stage, shown/hidden dynamically -->
+    <div id="stageCards"></div>
+
+    <!-- Completion card -->
+    <div class="completion-card" id="completionCard">
+      <h2>Your project is ready</h2>
+      <div id="completionStats"></div>
+    </div>
+
+    <!-- Error banner -->
+    <div class="error-banner" id="errorBanner">
+      <h3>Pipeline stopped</h3>
+      <p id="errorMessage"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Developer Log Drawer ────────────────────────── -->
+<div class="dev-drawer">
+  <div class="dev-toggle" id="devToggle">
+    <span>Developer Log (<span id="devCount">0</span> events)</span>
+    <span class="arrow" id="devArrow">&#9660;</span>
+  </div>
+  <div class="dev-content" id="devContent">
+    <div id="devLog"></div>
+  </div>
+</div>
+
+<script>
+// ── Stage Configuration ──────────────────────────────
+const STAGES = [
+  { id: 'brainstorm_agent', label: 'Brainstorm', emoji: '\u{1F4A1}',
+    active: 'Brainstorming your idea...', done: 'Spec complete' },
+  { id: 'planning_agent', label: 'Planning', emoji: '\u{1F4CB}',
+    active: 'Planning tasks and architecture...', done: 'Sprint plan ready' },
+  { id: 'schema_verify_agent', label: 'Verify Schema', emoji: '\u{1F50D}',
+    active: 'Verifying data contracts...', done: 'Schema verified' },
+  { id: 'implement_agent', label: 'Build', emoji: '\u{1F528}',
+    active: 'Writing code...', done: 'Code written' },
+  { id: 'code_review_agent', label: 'Code Review', emoji: '\u{1F440}',
+    active: 'Reviewing code quality...', done: 'Review complete' },
+  { id: 'qa_agent', label: 'Testing', emoji: '\u{1F9EA}',
+    active: 'Running QA tests...', done: 'Testing complete' },
+  { id: 'reality_check_agent', label: 'Reality Check', emoji: '\u2696\uFE0F',
+    active: 'Evaluating quality...', done: 'Quality assessed' },
+  { id: 'deploy_agent', label: 'Deploy', emoji: '\u{1F680}',
+    active: 'Deploying your project...', done: 'Deployed' },
+];
+
+// Map agent_id to stage index
+const STAGE_INDEX = {};
+STAGES.forEach((s, i) => STAGE_INDEX[s.id] = i);
+
+// ── State ────────────────────────────────────────────
+let sseSource = null;
+let currentRunId = null;
+let selectedStageIdx = -1;
+let devLogOpen = false;
+let allDevEvents = [];
+
+// Pipeline context -- accumulates outputs for rendering
+let ctx = {
+  projectName: null,
+  projectDir: null,
+  idea: null,
+  stageStates: {},
+  stageOutputs: {},
+  stageTimes: {},
+  stageMessages: {},
+  fileCount: 0,
+  taskCount: 0,
+  currentTask: null,
+  attemptCounts: {},
+};
+
+// ── DOM Refs ─────────────────────────────────────────
+const $dot = document.getElementById('statusDot');
+const $form = document.getElementById('ideaForm');
+const $launchBtn = document.getElementById('launchBtn');
+const $stopBtn = document.getElementById('stopBtn');
+const $projectBar = document.getElementById('projectBar');
+const $projectDir = document.getElementById('projectDir');
+const $sidebar = document.getElementById('sidebar');
+const $content = document.getElementById('content');
+const $stageCards = document.getElementById('stageCards');
+const $emptyState = document.getElementById('emptyState');
+const $completionCard = document.getElementById('completionCard');
+const $completionStats = document.getElementById('completionStats');
+const $errorBanner = document.getElementById('errorBanner');
+const $errorMessage = document.getElementById('errorMessage');
+const $devCount = document.getElementById('devCount');
+const $devLog = document.getElementById('devLog');
+const $devContent = document.getElementById('devContent');
+const $devToggle = document.getElementById('devToggle');
+const $devArrow = document.getElementById('devArrow');
+
+// ── Build Sidebar & Cards ────────────────────────────
+function buildUI() {
+  $sidebar.innerHTML = '';
+  $stageCards.innerHTML = '';
+
+  STAGES.forEach((stage, i) => {
+    // Sidebar item
+    const item = document.createElement('div');
+    item.className = 'stage-item pending';
+    item.id = 'stage-' + stage.id;
+    item.innerHTML =
+      '<div class="stage-icon">' + stage.emoji + '</div>' +
+      '<div class="stage-info">' +
+        '<div class="stage-name">' + stage.label + '</div>' +
+        '<div class="stage-status" id="stage-status-' + stage.id + '"></div>' +
+        '<div class="stage-time" id="stage-time-' + stage.id + '"></div>' +
+      '</div>' +
+      (i < STAGES.length - 1 ? '<div class="stage-connector"></div>' : '');
+    item.addEventListener('click', function() { selectStage(i); });
+    $sidebar.appendChild(item);
+
+    // Content card
+    const card = document.createElement('div');
+    card.className = 'stage-card';
+    card.id = 'card-' + stage.id;
+    card.innerHTML =
+      '<div class="stage-header">' + stage.emoji + ' ' + stage.label + '</div>' +
+      '<div class="stage-subtitle" id="subtitle-' + stage.id + '"></div>' +
+      '<div class="stage-thinking" id="thinking-' + stage.id + '">' +
+        '<div class="spinner"></div>' +
+        '<span id="thinking-text-' + stage.id + '">Thinking...</span>' +
+      '</div>' +
+      '<div class="stage-output" id="output-' + stage.id + '"></div>';
+    $stageCards.appendChild(card);
+  });
+}
+
+function selectStage(idx) {
+  selectedStageIdx = idx;
+  document.querySelectorAll('.stage-item').forEach(function(el, i) {
+    el.classList.toggle('selected', i === idx);
+  });
+  document.querySelectorAll('.stage-card').forEach(function(el, i) {
+    el.classList.toggle('visible', i === idx);
+  });
+  $emptyState.style.display = 'none';
+}
+
+// ── SSE Connection ───────────────────────────────────
+function connectSSE() {
+  if (sseSource) { sseSource.close(); sseSource = null; }
+
+  sseSource = new EventSource('/sse');
+  sseSource.onopen = function() { $dot.className = 'dot live'; };
+  sseSource.onerror = function() { $dot.className = 'dot error'; };
+
+  var eventTypes = [
+    'pipeline.start','pipeline.complete','pipeline.error',
+    'node.start','node.complete','node.error','node.skip',
+    'llm.call.start','llm.call.complete','llm.call.error',
+    'gate.evaluated','gate.error',
+    'memory.saved','memory.save_error','memory.load_error',
+    'git.commit','git.error',
+    'json.parse_error','fabrication.detected','db.error',
+    'mcp.resolved','mcp.unavailable',
+  ];
+  eventTypes.forEach(function(type) {
+    sseSource.addEventListener(type, function(e) {
+      try {
+        var evt = JSON.parse(e.data);
+        handleEvent(evt);
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    });
+  });
+}
+
+// ── Event Handler ────────────────────────────────────
+function handleEvent(evt) {
+  var type = evt.event_type;
+  var agent = evt.agent_id;
+  var data = evt.data || {};
+
+  // Always add to dev log
+  addDevEvent(evt);
+
+  switch (type) {
+    case 'pipeline.start': onPipelineStart(evt); break;
+    case 'pipeline.complete': onPipelineComplete(evt); break;
+    case 'pipeline.error': onPipelineError(evt); break;
+    case 'node.start': onNodeStart(agent, evt); break;
+    case 'node.complete': onNodeComplete(agent, evt); break;
+    case 'node.error': onNodeError(agent, evt); break;
+    case 'llm.call.start': onLLMStart(agent, data); break;
+    case 'llm.call.complete': onLLMComplete(agent, data); break;
+    case 'gate.evaluated': onGateEvaluated(agent, data); break;
+    case 'gate.error': onGateError(agent, data); break;
+    case 'git.commit': onGitCommit(data); break;
+  }
+}
+
+// ── Pipeline Lifecycle ───────────────────────────────
+function onPipelineStart(evt) {
+  var data = evt.data || {};
+  currentRunId = evt.run_id;
+  ctx.projectName = data.project_name;
+  ctx.projectDir = data.project_dir;
+  ctx.idea = (data.ideas || [])[0] || '';
+  ctx.stageStates = {};
+  ctx.stageOutputs = {};
+  ctx.stageTimes = {};
+  ctx.stageMessages = {};
+  ctx.fileCount = 0;
+  ctx.taskCount = 0;
+  ctx.attemptCounts = {};
+  STAGES.forEach(function(s) { ctx.stageStates[s.id] = 'pending'; });
+
+  $projectBar.style.display = 'flex';
+  $projectDir.textContent = data.project_dir || '';
+
+  $stopBtn.style.display = 'inline-block';
+  $launchBtn.disabled = true;
+  $emptyState.style.display = 'none';
+  $completionCard.classList.remove('visible');
+  $errorBanner.classList.remove('visible');
+
+  updateSidebar();
+}
+
+function onPipelineComplete(evt) {
+  $stopBtn.style.display = 'none';
+  $launchBtn.disabled = false;
+
+  $completionStats.innerHTML =
+    '<div class="stat"><span class="stat-label">Location</span><span class="stat-value">' + esc(ctx.projectDir || '') + '</span></div>' +
+    '<div class="stat"><span class="stat-label">Files created</span><span class="stat-value">' + ctx.fileCount + '</span></div>' +
+    '<div class="stat"><span class="stat-label">Artifacts</span><span class="stat-value">./artifacts/docs/</span></div>';
+  $completionCard.classList.add('visible');
+  $content.scrollTop = $content.scrollHeight;
+}
+
+function onPipelineError(evt) {
+  $stopBtn.style.display = 'none';
+  $launchBtn.disabled = false;
+
+  var errMsg = (evt.data || {}).error || 'Unknown error';
+  var errType = (evt.data || {}).error_type || '';
+
+  if (errType === 'UserCancelled') {
+    $errorMessage.textContent = 'Pipeline was stopped by you.';
+  } else {
+    $errorMessage.textContent = errMsg;
+  }
+  $errorBanner.classList.add('visible');
+  $content.scrollTop = $content.scrollHeight;
+}
+
+// ── Node Lifecycle ───────────────────────────────────
+function onNodeStart(agent, evt) {
+  if (!(agent in STAGE_INDEX)) return;
+  var idx = STAGE_INDEX[agent];
+
+  ctx.stageStates[agent] = 'active';
+  ctx.stageTimes[agent] = { start: Date.now() };
+
+  ctx.attemptCounts[agent] = (ctx.attemptCounts[agent] || 0) + 1;
+  var attempt = ctx.attemptCounts[agent];
+  var stage = STAGES[idx];
+
+  var msg = stage.active;
+  if (attempt > 1) {
+    msg = 'Retrying ' + stage.label.toLowerCase() + ' (attempt ' + attempt + ')...';
+  }
+  ctx.stageMessages[agent] = msg;
+
+  var $thinking = document.getElementById('thinking-' + agent);
+  var $thinkingText = document.getElementById('thinking-text-' + agent);
+  if ($thinking) { $thinking.classList.add('visible'); }
+  if ($thinkingText) { $thinkingText.textContent = msg; }
+
+  document.getElementById('subtitle-' + agent).textContent = msg;
+
+  selectStage(idx);
+  updateSidebar();
+  startStageTimer(agent);
+}
+
+function onNodeComplete(agent, evt) {
+  if (!(agent in STAGE_INDEX)) return;
+  var data = evt.data || {};
+  var gatesPassed = data.gates_passed;
+  var duration = evt.duration_ms;
+
+  if (gatesPassed === false) {
+    ctx.stageStates[agent] = 'retry';
+    ctx.stageMessages[agent] = 'Quality check failed, retrying...';
+  } else {
+    ctx.stageStates[agent] = 'complete';
+    ctx.stageMessages[agent] = STAGES[STAGE_INDEX[agent]].done;
+  }
+
+  if (duration) {
+    ctx.stageTimes[agent] = ctx.stageTimes[agent] || {};
+    ctx.stageTimes[agent].duration = duration;
+  }
+
+  var $thinking = document.getElementById('thinking-' + agent);
+  if ($thinking) $thinking.classList.remove('visible');
+
+  document.getElementById('subtitle-' + agent).textContent = ctx.stageMessages[agent];
+  stopStageTimer(agent);
+  updateSidebar();
+}
+
+function onNodeError(agent, evt) {
+  if (!(agent in STAGE_INDEX)) return;
+  ctx.stageStates[agent] = 'failed';
+  ctx.stageMessages[agent] = 'Error: ' + ((evt.data || {}).error || 'unknown');
+
+  var $thinking = document.getElementById('thinking-' + agent);
+  if ($thinking) $thinking.classList.remove('visible');
+
+  document.getElementById('subtitle-' + agent).textContent = ctx.stageMessages[agent];
+  stopStageTimer(agent);
+  updateSidebar();
+}
+
+// ── LLM Events ───────────────────────────────────────
+function onLLMStart(agent, data) {
+  if (!(agent in STAGE_INDEX)) return;
+  var model = data.model || 'AI';
+  var $thinkingText = document.getElementById('thinking-text-' + agent);
+  if ($thinkingText) {
+    var attempt = ctx.attemptCounts[agent] || 1;
+    var prefix = attempt > 1 ? 'Retry ' + attempt + ': ' : '';
+    $thinkingText.textContent = prefix + 'Thinking... (' + model + ')';
+  }
+}
+
+function onLLMComplete(agent, data) {
+  if (!(agent in STAGE_INDEX)) return;
+
+  var content = data.content || '';
+  var parsed = null;
+  try {
+    var jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/(\{[\s\S]*\})/);
+    if (jsonMatch) {
+      parsed = JSON.parse(jsonMatch[1]);
+    } else {
+      parsed = JSON.parse(content);
+    }
+  } catch (e) {
+    parsed = { _raw: content };
+  }
+
+  ctx.stageOutputs[agent] = parsed;
+  renderStageOutput(agent, parsed);
+}
+
+// ── Gate Events ──────────────────────────────────────
+function onGateEvaluated(agent, data) {
+  if (data.passed === false) {
+    var $subtitle = document.getElementById('subtitle-' + agent);
+    if ($subtitle) {
+      $subtitle.textContent = 'Quality check: ' + (data.gate_id || '') + ' needs improvement';
+    }
+  }
+}
+
+function onGateError(agent, data) {
+  var $subtitle = document.getElementById('subtitle-' + agent);
+  if ($subtitle) {
+    $subtitle.textContent = 'Checking quality...';
+  }
+}
+
+// ── Git Events ───────────────────────────────────────
+function onGitCommit(data) {
+  var stat = data.diff_stat || '';
+  var match = stat.match(/(\d+) files? changed/);
+  if (match) {
+    ctx.fileCount = Math.max(ctx.fileCount, parseInt(match[1]));
+  }
+}
+
+// ── Stage Output Renderers ───────────────────────────
+function renderStageOutput(agent, parsed) {
+  var $output = document.getElementById('output-' + agent);
+  if (!$output) return;
+
+  switch (agent) {
+    case 'brainstorm_agent': renderBrainstorm($output, parsed); break;
+    case 'planning_agent': renderPlanning($output, parsed); break;
+    case 'schema_verify_agent': renderSchemaVerify($output, parsed); break;
+    case 'implement_agent': renderImplement($output, parsed); break;
+    case 'code_review_agent': renderReview($output, parsed); break;
+    case 'qa_agent': renderQA($output, parsed); break;
+    case 'reality_check_agent': renderReality($output, parsed); break;
+    case 'deploy_agent': renderDeploy($output, parsed); break;
+    default: renderRaw($output, parsed);
+  }
+}
+
+function renderBrainstorm($el, parsed) {
+  var brief = parsed.research_brief || parsed;
+  var idea = parsed.validated_idea || {};
+  var html = '';
+
+  if (brief.problem_statement) {
+    html += '<div class="output-section"><h3>What We\'re Building</h3><p>' + esc(brief.problem_statement) + '</p></div>';
+  }
+
+  if (brief.core_features && brief.core_features.length) {
+    html += '<div class="output-section"><h3>Core Features</h3><ul>';
+    brief.core_features.forEach(function(f) {
+      var name = typeof f === 'string' ? f : (f.name || f.title || JSON.stringify(f));
+      var desc = typeof f === 'object' ? (f.description || '') : '';
+      html += '<li><span class="feature-bullet">\u2192</span><div><strong>' + esc(name) + '</strong>' + (desc ? '<br><span style="color:var(--text-dim)">' + esc(desc) + '</span>' : '') + '</div></li>';
+    });
+    html += '</ul></div>';
+  }
+
+  if (brief.out_of_scope && brief.out_of_scope.length) {
+    html += '<div class="output-section"><h3>Out of Scope</h3><ul>';
+    brief.out_of_scope.forEach(function(s) {
+      html += '<li><span style="color:var(--red)">\u2717</span> ' + esc(typeof s === 'string' ? s : JSON.stringify(s)) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  if (brief.tech_stack) {
+    html += '<div class="output-section"><h3>Tech Stack</h3><div class="tech-stack">';
+    var stack = brief.tech_stack;
+    if (typeof stack === 'object' && stack !== null) {
+      Object.keys(stack).forEach(function(k) {
+        html += '<span class="tech-tag">' + esc(k) + ': ' + esc(String(stack[k])) + '</span>';
+      });
+    } else {
+      html += '<span class="tech-tag">' + esc(String(stack)) + '</span>';
+    }
+    html += '</div></div>';
+  }
+
+  if (brief.risks && brief.risks.length) {
+    html += '<div class="output-section"><h3>Risks</h3><ul>';
+    brief.risks.forEach(function(r) {
+      html += '<li><span style="color:var(--yellow)">\u26A0</span> ' + esc(typeof r === 'string' ? r : JSON.stringify(r)) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+
+  if (idea.confidence !== undefined) {
+    var pct = Math.round(idea.confidence * 100);
+    html += '<div class="output-section"><h3>Confidence</h3><p><span class="badge ' + (pct >= 70 ? 'badge-pass' : pct >= 40 ? 'badge-warn' : 'badge-fail') + '">' + pct + '%</span></p></div>';
+  }
+
+  $el.innerHTML = html || renderRawHTML(parsed);
+}
+
+function renderPlanning($el, parsed) {
+  var backlog = parsed.sprint_backlog || {};
+  var tasks = backlog.tasks || [];
+  var arch = parsed.architecture || {};
+  ctx.taskCount = tasks.length;
+
+  var html = '';
+  if (tasks.length) {
+    html += '<div class="output-section"><h3>Sprint Backlog (' + tasks.length + ' tasks)</h3>';
+    tasks.forEach(function(t, i) {
+      var ac = (t.acceptance_criteria || []);
+      html += '<div class="task-card">' +
+        '<div class="task-title">' + (i + 1) + '. ' + esc(t.title || t.id || 'Task') + '</div>' +
+        '<div class="task-desc">' + esc(t.description || '') + '</div>' +
+        '<div class="task-meta">' + esc(t.category || '') + ' \u00B7 ' + (t.estimated_hours || '?') + 'h' + (ac.length ? ' \u00B7 ' + ac.length + ' acceptance criteria' : '') + '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (arch.tech_stack) {
+    html += '<div class="output-section"><h3>Architecture</h3><div class="tech-stack">';
+    Object.keys(arch.tech_stack).forEach(function(k) {
+      html += '<span class="tech-tag">' + esc(k) + ': ' + esc(String(arch.tech_stack[k])) + '</span>';
+    });
+    html += '</div></div>';
+  }
+
+  $el.innerHTML = html || renderRawHTML(parsed);
+}
+
+function renderSchemaVerify($el, parsed) {
+  var valid = parsed.schema_valid;
+  var issues = parsed.schema_issues || [];
+  var html = '<div class="output-section"><h3>Validation Result</h3><p><span class="badge ' + (valid ? 'badge-pass' : 'badge-fail') + '">' + (valid ? 'VALID' : 'INVALID') + '</span></p></div>';
+
+  if (issues.length) {
+    html += '<div class="output-section"><h3>Issues (' + issues.length + ')</h3><ul>';
+    issues.forEach(function(issue) {
+      var sev = issue.severity || 'info';
+      var cls = sev === 'critical' ? 'badge-fail' : sev === 'warning' ? 'badge-warn' : 'badge-info';
+      html += '<li><span class="badge ' + cls + '">' + esc(sev) + '</span> ' + esc(issue.description || issue.message || JSON.stringify(issue)) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+  $el.innerHTML = html;
+}
+
+function renderImplement($el, parsed) {
+  var artifact = parsed.code_artifact || parsed;
+  var files = artifact.files_changed || [];
+  ctx.fileCount = Math.max(ctx.fileCount, files.length);
+
+  var html = '';
+  if (files.length) {
+    html += '<div class="output-section"><h3>Files Created (' + files.length + ')</h3><div class="file-tree">';
+    files.forEach(function(f) {
+      var path = f.path || f;
+      html += '<div class="file">\u{1F4C4} ' + esc(typeof path === 'string' ? path : JSON.stringify(path)) + '</div>';
+    });
+    html += '</div></div>';
+  }
+  if (artifact.description) {
+    html += '<div class="output-section"><h3>Summary</h3><p>' + esc(artifact.description) + '</p></div>';
+  }
+  $el.innerHTML = html || '<div class="output-section"><p style="color:var(--text-dim)">Writing code to disk...</p></div>';
+}
+
+function renderReview($el, parsed) {
+  var verdict = parsed.review_verdict || parsed;
+  var status = verdict.status || 'PENDING';
+  var cls = status === 'APPROVED' ? 'badge-pass' : status === 'REJECTED' ? 'badge-fail' : 'badge-warn';
+
+  var html = '<div class="output-section"><h3>Verdict</h3><p><span class="badge ' + cls + '">' + esc(status) + '</span></p></div>';
+  var comments = verdict.comments || [];
+  if (comments.length) {
+    html += '<div class="output-section"><h3>Comments (' + comments.length + ')</h3><ul>';
+    comments.forEach(function(c) {
+      if (typeof c === 'string') {
+        html += '<li>' + esc(c) + '</li>';
+      } else {
+        var sev = c.severity || 'info';
+        var cls2 = sev === 'critical' || sev === 'high' ? 'badge-fail' : sev === 'medium' ? 'badge-warn' : 'badge-info';
+        html += '<li><span class="badge ' + cls2 + '">' + esc(sev) + '</span> ' + esc(c.comment || c.message || JSON.stringify(c)) + '</li>';
+      }
+    });
+    html += '</ul></div>';
+  }
+  $el.innerHTML = html;
+}
+
+function renderQA($el, parsed) {
+  var qa = parsed.qa_report || parsed;
+  var verdict = qa.overall_verdict || 'PENDING';
+  var cls = verdict === 'PASS' ? 'badge-pass' : verdict === 'FAIL' ? 'badge-fail' : 'badge-warn';
+
+  var html = '<div class="output-section"><h3>QA Verdict</h3><p><span class="badge ' + cls + '">' + esc(verdict) + '</span></p></div>';
+  var issues = qa.issues || [];
+  if (issues.length) {
+    html += '<div class="output-section"><h3>Issues (' + issues.length + ')</h3><ul>';
+    issues.forEach(function(issue) {
+      html += '<li><span style="color:var(--yellow)">\u26A0</span> ' + esc(typeof issue === 'string' ? issue : (issue.description || issue.message || JSON.stringify(issue))) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+  $el.innerHTML = html;
+}
+
+function renderReality($el, parsed) {
+  var verdict = parsed.reality_verdict || parsed;
+  var status = verdict.status || 'PENDING';
+  var cls = status === 'READY' ? 'badge-pass' : status === 'BLOCKED' ? 'badge-fail' : 'badge-warn';
+
+  var html = '<div class="output-section"><h3>Reality Check</h3><p><span class="badge ' + cls + '">' + esc(status) + '</span>' +
+    (verdict.quality_rating ? ' \u00B7 Rating: ' + esc(verdict.quality_rating) : '') + '</p></div>';
+  var fixes = verdict.fix_instructions || [];
+  if (fixes.length) {
+    html += '<div class="output-section"><h3>Fix Instructions</h3><ul>';
+    fixes.forEach(function(f) {
+      html += '<li><span style="color:var(--orange)">\u2192</span> ' + esc(typeof f === 'string' ? f : (f.instruction || JSON.stringify(f))) + '</li>';
+    });
+    html += '</ul></div>';
+  }
+  $el.innerHTML = html;
+}
+
+function renderDeploy($el, parsed) {
+  var manifest = parsed.deployment_manifest || parsed;
+  var status = manifest.status || 'PENDING';
+  var cls = status === 'SUCCESS' ? 'badge-pass' : status === 'FAILED' ? 'badge-fail' : 'badge-warn';
+
+  var html = '<div class="output-section"><h3>Deployment</h3><p><span class="badge ' + cls + '">' + esc(status) + '</span></p></div>';
+  if (manifest.url) {
+    html += '<div class="output-section"><h3>URL</h3><p style="color:var(--cyan)">' + esc(manifest.url) + '</p></div>';
+  }
+  if (manifest.rollback_instructions) {
+    html += '<div class="output-section"><h3>Rollback</h3><p style="font-size:13px;color:var(--text-dim)">' + esc(manifest.rollback_instructions) + '</p></div>';
+  }
+  $el.innerHTML = html;
+}
+
+function renderRaw($el, parsed) {
+  $el.innerHTML = renderRawHTML(parsed);
+}
+
+function renderRawHTML(parsed) {
+  var raw = parsed._raw || JSON.stringify(parsed, null, 2);
+  return '<div class="output-section"><pre style="font-family:var(--mono);font-size:12px;color:var(--text-dim);white-space:pre-wrap;max-height:300px;overflow:auto;background:var(--bg-card);padding:12px;border-radius:var(--radius)">' + esc(String(raw).substring(0, 3000)) + '</pre></div>';
+}
+
+// ── Sidebar Update ───────────────────────────────────
+function updateSidebar() {
+  STAGES.forEach(function(stage) {
+    var state = ctx.stageStates[stage.id] || 'pending';
+    var $item = document.getElementById('stage-' + stage.id);
+    if (!$item) return;
+    $item.className = 'stage-item ' + state + (STAGE_INDEX[stage.id] === selectedStageIdx ? ' selected' : '');
+
+    var $status = document.getElementById('stage-status-' + stage.id);
+    if ($status) $status.textContent = ctx.stageMessages[stage.id] || '';
+  });
+}
+
+// ── Stage Timers ─────────────────────────────────────
+var _stageTimers = {};
+
+function startStageTimer(agent) {
+  stopStageTimer(agent);
+  var $time = document.getElementById('stage-time-' + agent);
+  if (!$time) return;
+  var start = Date.now();
+  _stageTimers[agent] = setInterval(function() {
+    var elapsed = Math.round((Date.now() - start) / 1000);
+    $time.textContent = elapsed + 's';
+  }, 1000);
+}
+
+function stopStageTimer(agent) {
+  if (_stageTimers[agent]) {
+    clearInterval(_stageTimers[agent]);
+    delete _stageTimers[agent];
+  }
+  var dur = (ctx.stageTimes[agent] || {}).duration;
+  if (dur) {
+    var $time = document.getElementById('stage-time-' + agent);
+    if ($time) $time.textContent = (dur / 1000).toFixed(1) + 's';
+  }
+}
+
+// ── Developer Log ────────────────────────────────────
+function addDevEvent(evt) {
+  allDevEvents.push(evt);
+  $devCount.textContent = allDevEvents.length;
+  if (!devLogOpen) return;
+  appendDevRow(evt);
+}
+
+function appendDevRow(evt) {
+  var ts = evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '';
+  var type = evt.event_type || '';
+  var agent = evt.agent_id || '';
+  var dur = evt.duration_ms ? evt.duration_ms + 'ms' : '';
+  var d = evt.data || {};
+
+  var detail = '';
+  if (type.indexOf('llm.call.start') >= 0) detail = (d.execution_type || '') + ' / ' + (d.model || '');
+  else if (type.indexOf('llm.call.complete') >= 0) detail = (d.provider || '') + ' / ' + (d.model || '') + ' \u00B7 ' + ((d.usage || {}).output_tokens || '?') + ' tokens';
+  else if (type.indexOf('gate.evaluated') >= 0) detail = (d.gate_id || '') + ': ' + (d.passed ? 'PASS' : 'FAIL');
+  else if (type.indexOf('gate.error') >= 0) detail = d.error || '';
+  else if (type.indexOf('error') >= 0) detail = d.error || d.message || '';
+  else if (type.indexOf('memory') >= 0) detail = d.summary || d.memory_type || '';
+  else if (type.indexOf('git') >= 0) detail = d.commit_msg || d.diff_stat || '';
+  else detail = JSON.stringify(d).substring(0, 120);
+
+  var typeClass = 'mem';
+  if (type.indexOf('start') >= 0) typeClass = 'start';
+  else if (type.indexOf('complete') >= 0) typeClass = 'complete';
+  else if (type.indexOf('error') >= 0) typeClass = 'error';
+  else if (type.indexOf('gate') >= 0) typeClass = 'gate';
+  else if (type.indexOf('llm') >= 0) typeClass = 'llm';
+
+  var row = document.createElement('div');
+  row.className = 'dev-row';
+  row.innerHTML =
+    '<span class="dev-time">' + esc(ts) + '</span>' +
+    '<span class="dev-type ' + typeClass + '">' + esc(type.split('.').pop()) + '</span>' +
+    '<span class="dev-agent">' + esc(agent) + '</span>' +
+    '<span class="dev-detail">' + esc(detail) + '</span>' +
+    '<span class="dev-dur">' + esc(dur) + '</span>';
+  $devLog.appendChild(row);
+  $devLog.scrollTop = $devLog.scrollHeight;
+}
+
+// ── Actions ──────────────────────────────────────────
+async function launchPipeline(e) {
+  e.preventDefault();
+  var form = new FormData($form);
+  var project = form.get('project') || 'MyApp';
+  var idea = form.get('idea');
+  var mode = form.get('mode') || 'autonomous';
+
+  if (!idea || !idea.trim()) {
+    document.querySelector('input[name="idea"]').focus();
+    return;
+  }
+
+  // Reset UI
+  buildUI();
+  $emptyState.style.display = 'none';
+  $completionCard.classList.remove('visible');
+  $errorBanner.classList.remove('visible');
+  allDevEvents = [];
+  $devLog.innerHTML = '';
+  $devCount.textContent = '0';
+
+  try {
+    var resp = await fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: project, idea: idea, mode: mode }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      alert('Launch failed: ' + (data.error || 'unknown'));
+      return;
+    }
+    currentRunId = data.run_id;
+  } catch (err) {
+    alert('Failed to connect: ' + err.message);
+  }
+}
+
+async function stopPipeline() {
+  if (!currentRunId) return;
+  $stopBtn.disabled = true;
+  $stopBtn.textContent = 'Stopping...';
+  try {
+    await fetch('/api/runs/' + currentRunId + '/cancel', { method: 'POST' });
+  } catch (e) {
+    console.error('Cancel failed:', e);
+  } finally {
+    $stopBtn.disabled = false;
+    $stopBtn.textContent = 'Stop';
+  }
+}
+
+// ── Util ─────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return '';
+  var div = document.createElement('div');
+  div.textContent = String(s);
+  return div.innerHTML;
+}
+
+// ── Init ─────────────────────────────────────────────
+buildUI();
+connectSSE();
+
+$form.addEventListener('submit', launchPipeline);
+$stopBtn.addEventListener('click', stopPipeline);
+$devToggle.addEventListener('click', function() {
+  devLogOpen = !devLogOpen;
+  $devContent.classList.toggle('open', devLogOpen);
+  $devArrow.classList.toggle('open', devLogOpen);
+  if (devLogOpen) {
+    $devLog.innerHTML = '';
+    allDevEvents.forEach(function(evt) { appendDevRow(evt); });
+  }
+});
+</script>
+</body>
+</html>

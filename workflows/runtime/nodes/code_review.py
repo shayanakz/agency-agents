@@ -32,7 +32,13 @@ def _build_prompt(agent: dict, state: PipelineState) -> str:
         return "No code artifact provided. Return CHANGES_REQUESTED."
 
     files = code_artifact.get("files_changed", [])
-    parts = ["Review the following implementation:\n"]
+    project_dir = code_artifact.get("project_dir", state.get("project_dir", ""))
+    git_diff = code_artifact.get("git_diff", "")
+
+    parts = [f"Review the implementation in `{project_dir}`:\n"]
+
+    if git_diff:
+        parts.append(f"### Git diff (what changed)\n```\n{git_diff}\n```")
 
     if isinstance(files, list):
         for f in files[:20]:
@@ -42,9 +48,8 @@ def _build_prompt(agent: dict, state: PipelineState) -> str:
                 if content:
                     parts.append(f"### {path}\n```\n{content[:5000]}\n```")
                 else:
-                    parts.append(f"### {path} (file exists on disk, {f.get('size', '?')} bytes)")
+                    parts.append(f"### {path} ({f.get('size', '?')} bytes — binary or unreadable)")
 
-    # Include description from implement agent
     desc = code_artifact.get("description", "")
     if desc:
         parts.append(f"\n### Implementation Summary\n{desc}")
@@ -61,9 +66,19 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
             "current_stage": "delivery",
         }
 
-    review_verdict = parsed.get("review_verdict", parsed)
+    # Guard against parse failures — never default to APPROVED on garbage data
+    if parsed.get("_parse_error"):
+        review_verdict = {
+            "status": "CHANGES_REQUESTED",
+            "comments": [{"severity": "critical", "comment": "LLM output could not be parsed as JSON", "file": "N/A"}],
+            "blocking_issues": ["JSON parse failure — review output was not valid structured data"],
+            "_parse_error": True,
+        }
+    else:
+        review_verdict = parsed.get("review_verdict", parsed)
     if not isinstance(review_verdict, dict):
-        review_verdict = {"status": "APPROVED", "_raw": str(review_verdict)[:500]}
+        # Default to CHANGES_REQUESTED (not APPROVED) when output is unparseable
+        review_verdict = {"status": "CHANGES_REQUESTED", "_raw": str(review_verdict)[:500]}
 
     output_dir = Path(state.get("output_dir", "./artifacts"))
     results_dir = output_dir / "test-results"

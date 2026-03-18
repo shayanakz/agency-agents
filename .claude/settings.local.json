@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(chmod +x /Users/shayan/dev/agency-agents/scripts/validate-workflow.sh)"
+      "Bash(chmod +x /Users/shayan/dev/agency-agents/scripts/validate-workflow.sh)",
+      "Bash(python3 -m json.tool)",
+      "Bash(grep -r 'from \\\\.' /Users/shayan/dev/agency-agents/workflows/runtime/*.py)"
     ]
   }
 }

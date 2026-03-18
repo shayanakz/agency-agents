@@ -169,8 +169,17 @@ def create_artifact(artifact_data: dict) -> dict:
 
 
 def log_llm_call(log_data: dict) -> dict:
-    """Log an LLM invocation to the audit trail."""
+    """Log an LLM invocation to the audit trail.
+
+    Includes full system prompt, user prompt, and raw response
+    for complete accountability and replay capability.
+    """
     return _post("llm_audit_log", log_data)
+
+
+def log_pipeline_event(event_data: dict) -> dict:
+    """Log a pipeline event for real-time UI and audit trail."""
+    return _post("pipeline_events", event_data)
 
 
 def create_approval_request(run_id: str, step_id: str | None = None) -> dict:

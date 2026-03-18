@@ -22,6 +22,18 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
     docs_dir = output_dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
 
+    # Guard against parse failures — empty backlog triggers gate failure
+    if parsed.get("_parse_error"):
+        return {
+            "sprint_backlog": {},
+            "architecture": {},
+            "schema_contract": {},
+            "total_tasks": 0,
+            "current_task_index": 0,
+            "current_stage": "planning",
+            "awaiting_approval": state.get("mode") == "supervised",
+        }
+
     sprint_backlog = parsed.get("sprint_backlog", {})
     architecture = parsed.get("architecture", {})
     schema_contract = parsed.get("schema_contract", {})

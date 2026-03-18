@@ -27,6 +27,18 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
         json.dumps(parsed, indent=2), encoding="utf-8"
     )
 
+    # Guard against parse failures — treat as invalid schema
+    if parsed.get("_parse_error"):
+        schema_retry_count = state.get("schema_retry_count", 0)
+        return {
+            "verified_schema": None,
+            "schema_contract": state.get("schema_contract"),
+            "current_stage": "planning",
+            "schema_valid": False,
+            "schema_issues": [{"severity": "critical", "description": "Schema verify output was not valid JSON"}],
+            "schema_retry_count": schema_retry_count + 1,
+        }
+
     schema_valid = parsed.get("schema_valid", False)
     verified_schema = parsed.get("verified_schema", state.get("schema_contract"))
 

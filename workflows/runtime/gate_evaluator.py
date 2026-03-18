@@ -75,7 +75,7 @@ def evaluate_gate(predicate: str, context: dict[str, Any]) -> bool:
     # Wrap all context values in DotDict for dot-access support
     wrapped_context = {k: _to_dotdict(v) for k, v in context.items()}
 
-    safe_globals: dict[str, Any] = {
+    safe_builtins: dict[str, Any] = {
         "__builtins__": {},
         "len": len,
         "all": all,
@@ -101,6 +101,11 @@ def evaluate_gate(predicate: str, context: dict[str, Any]) -> bool:
         "false": False,
         "null": None,
     }
+
+    # Use a namespace that returns empty DotDict for any undefined variable
+    # so predicates like `research_brief.get('x')` fail gracefully (return None)
+    # instead of raising NameError when the LLM output was malformed.
+    safe_globals = _FallbackNamespace(safe_builtins)
     safe_globals.update(wrapped_context)
 
     try:
@@ -110,6 +115,17 @@ def evaluate_gate(predicate: str, context: dict[str, Any]) -> bool:
         raise GateEvaluationError(
             f"Gate predicate failed: {predicate!r} — {exc}"
         ) from exc
+
+
+class _FallbackNamespace(dict):
+    """Dict that returns an empty DotDict for any missing key.
+
+    This prevents NameError during gate eval when the LLM output is missing
+    expected top-level keys (e.g. after a JSON parse failure).
+    """
+
+    def __missing__(self, key: str) -> Any:
+        return DotDict({})
 
 
 def evaluate_all_gates(

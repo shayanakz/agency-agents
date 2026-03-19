@@ -46,8 +46,8 @@ app = FastAPI(title="Pipeline Dashboard", docs_url=None, redoc_url=None)
 
 _DASHBOARD_HTML = Path(__file__).parent / "dashboard.html"
 
-# Track active pipeline threads so we can report status
-_active_runs: dict[str, threading.Thread] = {}
+# Track active pipeline threads + metadata so we can report status
+_active_runs: dict[str, dict] = {}  # run_id -> {thread, project_name, idea, started_at}
 _active_runs_lock = threading.Lock()
 
 
@@ -233,9 +233,15 @@ async def launch_run(req: RunRequest):
                 _active_runs.pop(run_id, None)
             remove_cancel_flag(run_id)
 
+
     thread = threading.Thread(target=_run_pipeline, daemon=True, name=f"run-{run_id[:8]}")
     with _active_runs_lock:
-        _active_runs[run_id] = thread
+        _active_runs[run_id] = {
+            "thread": thread,
+            "project_name": project,
+            "idea": idea,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
     thread.start()
 
     return JSONResponse({
@@ -249,6 +255,40 @@ async def launch_run(req: RunRequest):
 
 
 # ── REST query endpoints ─────────────────────────────────────
+
+@app.get("/api/active-runs")
+async def list_active_runs():
+    """List currently running pipelines with metadata."""
+    with _active_runs_lock:
+        runs = [
+            {
+                "run_id": rid,
+                "project_name": meta["project_name"],
+                "idea": meta["idea"],
+                "started_at": meta["started_at"],
+            }
+            for rid, meta in _active_runs.items()
+        ]
+    return JSONResponse(runs)
+
+
+@app.post("/api/runs/cancel-all")
+async def cancel_all_runs():
+    """Cancel all currently running pipelines."""
+    with _active_runs_lock:
+        run_ids = list(_active_runs.keys())
+    bus = get_event_bus()
+    cancelled = []
+    for run_id in run_ids:
+        if request_cancel(run_id):
+            bus.emit(PipelineEvent(
+                event_type=EventType.PIPELINE_ERROR,
+                run_id=run_id,
+                data={"error": "Cancelled by user", "error_type": "UserCancelled"},
+            ))
+            cancelled.append(run_id)
+    return JSONResponse({"cancelled": cancelled, "count": len(cancelled)})
+
 
 @app.get("/api/runs")
 async def list_runs():
@@ -360,6 +400,7 @@ async def get_status():
     with _active_runs_lock:
         active = list(_active_runs.keys())
 
+
     # Check Supabase connectivity
     supabase_ok = False
     supabase_error = None
@@ -385,7 +426,11 @@ async def get_status():
 @app.get("/")
 async def serve_dashboard():
     if _DASHBOARD_HTML.exists():
-        return FileResponse(_DASHBOARD_HTML, media_type="text/html")
+        return FileResponse(
+            _DASHBOARD_HTML,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     return HTMLResponse("<h1>Dashboard HTML not found</h1>", status_code=404)
 
 

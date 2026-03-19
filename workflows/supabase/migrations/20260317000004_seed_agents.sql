@@ -5,10 +5,10 @@
 INSERT INTO agents (id, name, description, stage, role, persona_id, persona_selector, model_config, inputs, outputs, gates, retry_config, guardrails) VALUES
 
 -- 1. Brainstorm Agent
-('brainstorm_agent', 'Brainstorm & Spec Agent',
-  'Turns a vague idea into a tight, implementation-ready spec. Defines exactly what to build, what is out of scope, and what risks exist. No market analysis or business strategy.',
+('brainstorm_agent', 'Brainstorm & Plan Agent',
+  'Takes a raw idea and produces a comprehensive project plan — like how a senior engineer plans before coding. Defines what to build, how to build it, and breaks it into implementation phases.',
   'brainstorm',
-  E'You are a spec writer. Your only job is to turn a vague idea into a precise build spec that a developer can act on immediately.\n\nYou must produce:\n1. problem_statement: one sentence — what this builds and for whom\n2. core_features: only features explicitly in the idea — no extras, no "it would be nice if"\n3. out_of_scope: list the obvious tempting extras that are NOT being built\n4. tech_stack: specific recommendation for this project (not generic best practices)\n5. risks: top 2-3 implementation risks\n\nDO NOT write market analysis, competitor research, RICE scores, business strategy, or TAM/SAM/SOM. This is a build spec, not a pitch deck.\n\nCRITICAL: Return a JSON object with EXACTLY these keys:\n- research_brief: {problem_statement (string), core_features (array of {name, description}), out_of_scope (array of strings), tech_stack (object with keys: frontend, backend, database, deployment), risks (array of strings)}\n- validated_idea: {idea (string), confidence (float 0.0-1.0), build_ready (boolean)}',
+  E'You are a senior engineer planning a project. Think about this the way you would before writing any code:\n\n1. Understand what the user actually wants (not what they said — what they NEED)\n2. Define the simplest version that delivers value\n3. Choose the right tech stack for THIS specific project\n4. Break it into implementation phases that build on each other\n5. Define what is explicitly NOT being built\n\nYour output must be a comprehensive project plan:\n\n- problem_statement: What this builds and who it is for (1-2 sentences)\n- core_features: Array of {name, description} — only features implied by the idea\n- phases: Array of {name, description, tasks: [string]} — ordered implementation phases. Phase 1 should always be project scaffolding/setup. Each subsequent phase builds on the previous.\n- out_of_scope: What we are explicitly NOT building\n- tech_stack: {frontend, backend, database, deployment} — specific to THIS project\n- risks: Top 2-3 implementation risks\n\nKeep it concise. A simple idea gets a simple plan. Do not pad.\n\nCRITICAL: Return ONLY a JSON object with these keys:\n- research_brief: {problem_statement, core_features, phases, out_of_scope, tech_stack, risks}\n- validated_idea: {idea (string), confidence (float 0.0-1.0), build_ready (boolean)}',
   'trend-researcher', NULL,
   '{"execution": "claude_code_print", "model": "haiku", "max_turns": 1}'::jsonb,
   '[{"name": "raw_idea", "type": "RawIdea", "required": true, "description": "The initial idea description from the user"}]'::jsonb,
@@ -66,7 +66,7 @@ INSERT INTO agents (id, name, description, stage, role, persona_id, persona_sele
   E'You are a senior developer implementing a specific task. You must:\n1. Read the task spec and acceptance criteria carefully\n2. Follow the schema contract for ALL data types (mapping functions mandatory)\n3. Follow the architecture decisions (tech stack, patterns)\n4. Write unit tests for every public function\n5. If fix_instructions are provided from a previous rejection, address those FIRST\n6. Ensure null safety at every data boundary\n7. Use design tokens for colors, never hardcoded hex\n8. Platform-aware code: SSR guards for window/document access\n\nOutput ALL files as a JSON object with key: code_artifact containing files_changed (array of {path, content, action}), test_results (string), schema_compliant (boolean).',
   NULL,
   '{"rules": [{"condition": "current_task.get(''category'') == ''frontend''", "persona_id": "frontend-developer"}, {"condition": "current_task.get(''category'') == ''backend''", "persona_id": "backend-architect"}, {"condition": "current_task.get(''category'') == ''mobile''", "persona_id": "mobile-app-builder"}], "default": "senior-developer"}'::jsonb,
-  '{"execution": "claude_code", "model": "haiku", "allowed_tools": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"], "max_turns": 10, "working_dir": "./artifacts/src"}'::jsonb,
+  '{"execution": "claude_code", "model": "sonnet", "allowed_tools": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"], "max_turns": 30, "working_dir": "./artifacts/src"}'::jsonb,
   '[{"name": "current_task", "type": "Task", "required": true},
     {"name": "verified_schema", "type": "SchemaContract", "required": true},
     {"name": "architecture", "type": "ArchitectureDoc", "required": true},
@@ -99,19 +99,18 @@ INSERT INTO agents (id, name, description, stage, role, persona_id, persona_sele
 
 -- 6. QA Agent
 ('qa_agent', 'QA & Evidence Agent',
-  'Tests implementation with browser automation, captures screenshots, and produces structured evidence. Default to finding 3-5 issues.',
+  'Tests implementation by running tests, checking file structure, validating builds, and optionally using browser automation for UI testing.',
   'delivery',
-  E'You are a QA engineer who requires visual proof for everything. You must:\n1. Capture screenshots: desktop light, desktop dark, mobile light, mobile dark\n2. Check every acceptance criterion individually against real evidence\n3. Verify rendered data is not undefined, null, or empty\n4. Check dark mode contrast programmatically (getComputedStyle)\n5. Test interactive flows step-by-step\n6. Check console for errors (any Uncaught = FAIL)\n7. Check network for 4xx/5xx responses\n\ncurl returns 200 is NOT QA. Screenshots or it did not happen.\nDefault to finding 3-5 issues. Zero issues on first pass is a red flag.\n\nReturn your output as a JSON object with key: qa_report containing overall_verdict, screenshots (array), issues (array), criteria_checked (array), console_errors (array).',
+  E'You are a QA engineer. Test the implementation thoroughly:\n1. Run any test suites (npm test, pytest, go test, etc.)\n2. Try building the project (npm run build, cargo build, etc.)\n3. Check every acceptance criterion against real evidence\n4. Verify expected files exist and are not empty\n5. Check for syntax errors, import errors, missing dependencies\n6. If a dev server can be started, start it and verify it serves correctly\n7. Check for console errors, build warnings, failing tests\n\nDefault to finding 3-5 issues. Zero issues on first pass is suspicious.\n\nReturn your output as a JSON object with key: qa_report containing overall_verdict, test_results (array), issues (array), criteria_checked (array), console_errors (array).',
   'evidence-collector', NULL,
-  '{"execution": "claude_code", "model": "sonnet", "allowed_tools": ["Bash", "Read", "Glob", "Grep"], "mcp_servers": ["browser"], "max_turns": 30}'::jsonb,
+  '{"execution": "claude_code", "model": "haiku", "allowed_tools": ["Bash", "Read", "Glob", "Grep"], "max_turns": 10}'::jsonb,
   '[{"name": "code_artifact", "type": "CodeArtifact", "required": true},
-    {"name": "current_task", "type": "Task", "required": true}]'::jsonb,
-  '[{"name": "qa_report", "type": "QAReport", "validation": [{"field": "screenshots", "rule": "min_length", "value": 2}, {"field": "criteria_checked", "rule": "min_length", "value": 1}, {"field": "overall_verdict", "rule": "one_of", "values": ["PASS", "FAIL", "PARTIAL"]}]}]'::jsonb,
-  '[{"id": "evidence_captured", "description": "Must have at least desktop + mobile screenshots", "predicate": "len(qa_report.get(''screenshots'', [])) >= 2"},
-    {"id": "all_criteria_checked", "description": "Every acceptance criterion must be checked", "predicate": "len(qa_report.get(''criteria_checked'', [])) >= 1"},
-    {"id": "no_console_errors", "description": "Zero uncaught console errors for PASS", "predicate": "len(qa_report.get(''console_errors'', [])) == 0 or qa_report.get(''overall_verdict'') == ''FAIL''"}]'::jsonb,
+    {"name": "sprint_backlog", "type": "SprintBacklog", "required": true}]'::jsonb,
+  '[{"name": "qa_report", "type": "QAReport", "validation": [{"field": "criteria_checked", "rule": "min_length", "value": 1}, {"field": "overall_verdict", "rule": "one_of", "values": ["PASS", "FAIL", "PARTIAL"]}]}]'::jsonb,
+  '[{"id": "all_criteria_checked", "description": "Every acceptance criterion must be checked", "predicate": "len(qa_report.get(''criteria_checked'', [])) >= 1"},
+    {"id": "no_critical_errors", "description": "No build-breaking errors for PASS", "predicate": "len(qa_report.get(''console_errors'', [])) == 0 or qa_report.get(''overall_verdict'') == ''FAIL''"}]'::jsonb,
   '{"max_attempts": 2, "on_exhausted": "accept_current"}'::jsonb,
-  ARRAY['Must capture screenshots BEFORE making any assessment', 'Must check every acceptance criterion individually', 'Cannot claim zero issues without rigorous evidence', 'curl-based QA is explicitly forbidden', 'Default to finding issues — perfection on first pass is a red flag']
+  ARRAY['Must run actual test commands, not just read files', 'Must check every acceptance criterion individually', 'Cannot claim zero issues without running tests', 'Default to finding issues — perfection on first pass is a red flag']
 ),
 
 -- 7. Reality Check Agent

@@ -103,19 +103,147 @@ body {
 .btn-launch:disabled { opacity: 0.5; cursor: default; }
 
 .btn-stop {
-  background: var(--red);
-  color: #fff;
-  border: none;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
   padding: 6px 14px;
   border-radius: var(--radius);
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.btn-stop:hover { border-color: var(--red); color: var(--red); }
+.btn-stop .run-badge {
+  background: var(--red);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
   display: none;
 }
-.btn-stop:hover { opacity: 0.9; }
-.btn-stop:disabled { opacity: 0.5; }
+.btn-stop.has-runs .run-badge { display: inline-block; }
+
+/* ── Pipelines Modal ───────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 600px;
+  max-width: 95vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { font-size: 15px; font-weight: 600; }
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.modal-close:hover { background: var(--bg-hover); color: var(--text); }
+.modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.modal-toolbar-left { display: flex; align-items: center; gap: 8px; flex: 1; }
+.modal-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.run-row:last-child { border-bottom: none; }
+.run-row:hover { background: var(--bg-hover); }
+.run-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--red); }
+.run-info { flex: 1; min-width: 0; }
+.run-name { font-weight: 600; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-idea { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.run-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.btn-kill-one {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--red);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-kill-one:hover { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-kill-one:disabled { opacity: 0.4; cursor: default; }
+.modal-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-danger:hover { opacity: 0.85; }
+.btn-danger:disabled { opacity: 0.4; cursor: default; }
+.btn-secondary {
+  background: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { border-color: var(--text-dim); }
+.btn-secondary:disabled { opacity: 0.4; cursor: default; }
 
 /* ── Project Info Bar ──────────────────────────────── */
 .project-bar {
@@ -483,7 +611,31 @@ body {
     </select>
     <button type="submit" class="btn-launch" id="launchBtn">Launch</button>
   </form>
-  <button class="btn-stop" id="stopBtn">Stop</button>
+  <button class="btn-stop" id="pipelinesBtn">
+    &#9776; Pipelines
+    <span class="run-badge" id="runBadge">0</span>
+  </button>
+</div>
+
+<!-- ── Running Pipelines Modal ────────────────────── -->
+<div class="modal-overlay" id="pipelinesModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Running Pipelines</h2>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-toolbar">
+      <div class="modal-toolbar-left">
+        <input type="checkbox" id="selectAllCheck" title="Select all">
+        <label for="selectAllCheck" style="font-size:13px;color:var(--text-dim);cursor:pointer;">Select all</label>
+      </div>
+      <button class="btn-secondary" id="killSelectedBtn" disabled>Kill Selected</button>
+      <button class="btn-danger" id="killAllBtn">Kill All</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <div class="modal-empty" id="modalEmpty">No pipelines running.</div>
+    </div>
+  </div>
 </div>
 
 <!-- ── Project Info Bar ────────────────────────────── -->
@@ -584,7 +736,15 @@ let ctx = {
 const $dot = document.getElementById('statusDot');
 const $form = document.getElementById('ideaForm');
 const $launchBtn = document.getElementById('launchBtn');
-const $stopBtn = document.getElementById('stopBtn');
+const $pipelinesBtn = document.getElementById('pipelinesBtn');
+const $runBadge = document.getElementById('runBadge');
+const $pipelinesModal = document.getElementById('pipelinesModal');
+const $modalClose = document.getElementById('modalClose');
+const $modalBody = document.getElementById('modalBody');
+const $modalEmpty = document.getElementById('modalEmpty');
+const $selectAllCheck = document.getElementById('selectAllCheck');
+const $killSelectedBtn = document.getElementById('killSelectedBtn');
+const $killAllBtn = document.getElementById('killAllBtn');
 const $projectBar = document.getElementById('projectBar');
 const $projectDir = document.getElementById('projectDir');
 const $sidebar = document.getElementById('sidebar');
@@ -665,6 +825,7 @@ function connectSSE() {
     'memory.saved','memory.save_error','memory.load_error',
     'git.commit','git.error',
     'json.parse_error','fabrication.detected','db.error',
+    'llm.progress',
     'mcp.resolved','mcp.unavailable',
   ];
   eventTypes.forEach(function(type) {
@@ -700,6 +861,7 @@ function handleEvent(evt) {
     case 'gate.evaluated': onGateEvaluated(agent, data); break;
     case 'gate.error': onGateError(agent, data); break;
     case 'git.commit': onGitCommit(data); break;
+    case 'llm.progress': onLLMProgress(agent, data); break;
   }
 }
 
@@ -722,8 +884,8 @@ function onPipelineStart(evt) {
   $projectBar.style.display = 'flex';
   $projectDir.textContent = data.project_dir || '';
 
-  $stopBtn.style.display = 'inline-block';
   $launchBtn.disabled = true;
+  refreshActivePipelines();
   $emptyState.style.display = 'none';
   $completionCard.classList.remove('visible');
   $errorBanner.classList.remove('visible');
@@ -732,8 +894,8 @@ function onPipelineStart(evt) {
 }
 
 function onPipelineComplete(evt) {
-  $stopBtn.style.display = 'none';
   $launchBtn.disabled = false;
+  refreshActivePipelines();
 
   $completionStats.innerHTML =
     '<div class="stat"><span class="stat-label">Location</span><span class="stat-value">' + esc(ctx.projectDir || '') + '</span></div>' +
@@ -744,8 +906,10 @@ function onPipelineComplete(evt) {
 }
 
 function onPipelineError(evt) {
-  $stopBtn.style.display = 'none';
   $launchBtn.disabled = false;
+  refreshActivePipelines();
+  // Hide completion card — error overrides success
+  $completionCard.classList.remove('visible');
 
   var errMsg = (evt.data || {}).error || 'Unknown error';
   var errType = (evt.data || {}).error_type || '';
@@ -887,6 +1051,37 @@ function onGitCommit(data) {
   }
 }
 
+// ── LLM Progress (streaming from build step) ────────
+function onLLMProgress(agent, data) {
+  // Find which stage is active (progress events may not have agent_id)
+  var targetAgent = agent;
+  if (!targetAgent) {
+    // Find the currently active stage
+    for (var i = 0; i < STAGES.length; i++) {
+      if (ctx.stageStates[STAGES[i].id] === 'active') {
+        targetAgent = STAGES[i].id;
+        break;
+      }
+    }
+  }
+  if (!targetAgent || !(targetAgent in STAGE_INDEX)) return;
+
+  var msg = data.message || '';
+  var type = data.type || '';
+  var tool = data.tool || '';
+
+  // Update the thinking text with real-time info
+  var $thinkingText = document.getElementById('thinking-text-' + targetAgent);
+  if ($thinkingText) {
+    if (type === 'tool_use' && tool) {
+      $thinkingText.textContent = 'Using ' + tool + '...';
+    } else if (msg.length > 0) {
+      // Show first 80 chars of the message
+      $thinkingText.textContent = msg.substring(0, 80) + (msg.length > 80 ? '...' : '');
+    }
+  }
+}
+
 // ── Stage Output Renderers ───────────────────────────
 function renderStageOutput(agent, parsed) {
   var $output = document.getElementById('output-' + agent);
@@ -930,6 +1125,25 @@ function renderBrainstorm($el, parsed) {
       html += '<li><span style="color:var(--red)">\u2717</span> ' + esc(typeof s === 'string' ? s : JSON.stringify(s)) + '</li>';
     });
     html += '</ul></div>';
+  }
+
+  if (brief.phases && brief.phases.length) {
+    html += '<div class="output-section"><h3>Implementation Phases</h3>';
+    brief.phases.forEach(function(phase, i) {
+      var name = typeof phase === 'string' ? phase : (phase.name || phase.title || 'Phase ' + (i+1));
+      var desc = typeof phase === 'object' ? (phase.description || '') : '';
+      var tasks = (typeof phase === 'object' && phase.tasks) ? phase.tasks : [];
+      html += '<div class="task-card">';
+      html += '<div class="task-title">Phase ' + (i+1) + ': ' + esc(name) + '</div>';
+      if (desc) html += '<div class="task-desc">' + esc(desc) + '</div>';
+      if (tasks.length) {
+        tasks.forEach(function(t) {
+          html += '<div class="task-meta" style="padding:2px 0">\u2610 ' + esc(typeof t === 'string' ? t : JSON.stringify(t)) + '</div>';
+        });
+      }
+      html += '</div>';
+    });
+    html += '</div>';
   }
 
   if (brief.tech_stack) {
@@ -1233,19 +1447,126 @@ async function launchPipeline(e) {
   }
 }
 
-async function stopPipeline() {
-  if (!currentRunId) return;
-  $stopBtn.disabled = true;
-  $stopBtn.textContent = 'Stopping...';
+// ── Pipelines Modal ───────────────────────────────
+var _activeRuns = [];
+var _pollTimer = null;
+
+async function refreshActivePipelines() {
   try {
-    await fetch('/api/runs/' + currentRunId + '/cancel', { method: 'POST' });
+    var resp = await fetch('/api/active-runs');
+    _activeRuns = await resp.json();
   } catch (e) {
-    console.error('Cancel failed:', e);
-  } finally {
-    $stopBtn.disabled = false;
-    $stopBtn.textContent = 'Stop';
+    _activeRuns = [];
+  }
+  var count = _activeRuns.length;
+  $runBadge.textContent = count;
+  $pipelinesBtn.classList.toggle('has-runs', count > 0);
+  if ($pipelinesModal.classList.contains('open')) {
+    renderRunList();
   }
 }
+
+function renderRunList() {
+  var rows = $modalBody.querySelectorAll('.run-row');
+  rows.forEach(function(r) { r.remove(); });
+  $modalEmpty.style.display = _activeRuns.length === 0 ? 'block' : 'none';
+  _activeRuns.forEach(function(run) {
+    var row = document.createElement('div');
+    row.className = 'run-row';
+    row.dataset.runId = run.run_id;
+    var started = '';
+    try {
+      var d = new Date(run.started_at);
+      started = d.toLocaleTimeString();
+    } catch(e) {}
+    row.innerHTML =
+      '<input type="checkbox" class="run-check">' +
+      '<div class="run-info">' +
+        '<div class="run-name">' + esc(run.project_name) + '</div>' +
+        '<div class="run-idea">' + esc(run.idea) + '</div>' +
+      '</div>' +
+      '<div class="run-meta">Started ' + esc(started) + '</div>' +
+      '<button class="btn-kill-one" data-run-id="' + esc(run.run_id) + '">Kill</button>';
+    $modalBody.appendChild(row);
+    row.querySelector('.btn-kill-one').addEventListener('click', async function() {
+      var btn = this;
+      btn.disabled = true;
+      btn.textContent = 'Killing...';
+      await killRun(run.run_id);
+      await refreshActivePipelines();
+    });
+    row.querySelector('.run-check').addEventListener('change', updateSelectionState);
+  });
+  $selectAllCheck.checked = false;
+  updateSelectionState();
+}
+
+function updateSelectionState() {
+  var checks = $modalBody.querySelectorAll('.run-check');
+  var checked = $modalBody.querySelectorAll('.run-check:checked');
+  $killSelectedBtn.disabled = checked.length === 0;
+  $selectAllCheck.checked = checks.length > 0 && checked.length === checks.length;
+  $selectAllCheck.indeterminate = checked.length > 0 && checked.length < checks.length;
+}
+
+async function killRun(runId) {
+  try {
+    await fetch('/api/runs/' + runId + '/cancel', { method: 'POST' });
+  } catch (e) {
+    console.error('Kill failed:', e);
+  }
+}
+
+function openPipelinesModal() {
+  $pipelinesModal.classList.add('open');
+  refreshActivePipelines();
+  _pollTimer = setInterval(refreshActivePipelines, 3000);
+}
+
+function closePipelinesModal() {
+  $pipelinesModal.classList.remove('open');
+  clearInterval(_pollTimer);
+  _pollTimer = null;
+}
+
+$pipelinesBtn.addEventListener('click', openPipelinesModal);
+$modalClose.addEventListener('click', closePipelinesModal);
+$pipelinesModal.addEventListener('click', function(e) {
+  if (e.target === $pipelinesModal) closePipelinesModal();
+});
+
+$selectAllCheck.addEventListener('change', function() {
+  $modalBody.querySelectorAll('.run-check').forEach(function(c) {
+    c.checked = $selectAllCheck.checked;
+  });
+  updateSelectionState();
+});
+
+$killSelectedBtn.addEventListener('click', async function() {
+  $killSelectedBtn.disabled = true;
+  var checked = $modalBody.querySelectorAll('.run-check:checked');
+  var promises = [];
+  checked.forEach(function(c) {
+    var row = c.closest('.run-row');
+    promises.push(killRun(row.dataset.runId));
+  });
+  await Promise.all(promises);
+  await refreshActivePipelines();
+});
+
+$killAllBtn.addEventListener('click', async function() {
+  $killAllBtn.disabled = true;
+  $killAllBtn.textContent = 'Killing...';
+  try {
+    await fetch('/api/runs/cancel-all', { method: 'POST' });
+    await refreshActivePipelines();
+  } catch (e) {
+    console.error('Kill all failed:', e);
+  } finally {
+    $killAllBtn.disabled = false;
+    $killAllBtn.textContent = 'Kill All';
+  }
+});
 
 // ── Util ─────────────────────────────────────────────
 function esc(s) {
@@ -1258,9 +1579,10 @@ function esc(s) {
 // ── Init ─────────────────────────────────────────────
 buildUI();
 connectSSE();
+refreshActivePipelines();
+setInterval(refreshActivePipelines, 10000); // background badge refresh
 
 $form.addEventListener('submit', launchPipeline);
-$stopBtn.addEventListener('click', stopPipeline);
 $devToggle.addEventListener('click', function() {
   devLogOpen = !devLogOpen;
   $devContent.classList.toggle('open', devLogOpen);

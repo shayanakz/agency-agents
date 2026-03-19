@@ -29,7 +29,6 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
             "architecture": {},
             "schema_contract": {},
             "total_tasks": 0,
-            "current_task_index": 0,
             "current_stage": "planning",
             "awaiting_approval": state.get("mode") == "supervised",
         }
@@ -40,31 +39,52 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
 
     tasks = sprint_backlog.get("tasks", [])
 
-    # Write phase specs
-    for i, task in enumerate(tasks, 1):
-        (docs_dir / f"phase-{i}-spec.md").write_text(
-            json.dumps(task, indent=2), encoding="utf-8"
-        )
-
-    (docs_dir / "schema-contract.md").write_text(
-        json.dumps(schema_contract, indent=2), encoding="utf-8"
-    )
-    (docs_dir / "architecture.md").write_text(
-        json.dumps(architecture, indent=2), encoding="utf-8"
-    )
-
     # Cap tasks to prevent excessively long pipelines
-    max_tasks = min(len(tasks), 3)
+    max_tasks = min(len(tasks), 5)
     if len(tasks) > max_tasks:
         sprint_backlog = dict(sprint_backlog)
         sprint_backlog["tasks"] = tasks[:max_tasks]
+        tasks = sprint_backlog["tasks"]
+
+    # Append to PROJECT_PLAN.md (brainstorm wrote the spec section)
+    plan_path = docs_dir / "PROJECT_PLAN.md"
+    sections = []
+
+    sections.append("\n## Tasks\n")
+    for i, task in enumerate(tasks, 1):
+        title = task.get("title", f"Task {i}")
+        desc = task.get("description", "")
+        hours = task.get("estimated_hours", "?")
+        cat = task.get("category", "")
+        sections.append(f"### {i}. {title}")
+        if desc:
+            sections.append(desc)
+        criteria = task.get("acceptance_criteria", [])
+        if criteria:
+            sections.append("**Acceptance Criteria:**")
+            for c in criteria:
+                sections.append(f"- {c}")
+        sections.append(f"*{cat} · {hours}h*\n")
+
+    if architecture:
+        sections.append("## Architecture\n")
+        tech = architecture.get("tech_stack", {})
+        if isinstance(tech, dict):
+            for k, v in tech.items():
+                sections.append(f"- **{k}:** {v}")
+        sections.append("")
+
+    # Write by appending to existing plan
+    existing = ""
+    if plan_path.exists():
+        existing = plan_path.read_text(encoding="utf-8")
+    plan_path.write_text(existing + "\n".join(sections), encoding="utf-8")
 
     return {
         "sprint_backlog": sprint_backlog,
         "architecture": architecture,
         "schema_contract": schema_contract,
         "total_tasks": max_tasks,
-        "current_task_index": 0,
         "current_stage": "planning",
         "awaiting_approval": state.get("mode") == "supervised",
     }

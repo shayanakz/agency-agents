@@ -310,14 +310,7 @@ def extract_memories_from_output(
                             "tags": ["pattern", f"severity-{issue.get('severity', 'unknown')}"],
                         })
 
-    # Gate failure: save as agent lesson
-    if not gates_passed:
-        memories.append({
-            "memory_type": "agent",
-            "summary": f"Gate failure in {agent_id}",
-            "content": f"Agent {agent_id} failed gate evaluation. Output keys: {list(parsed_output.keys())[:10]}",
-            "tags": ["gate-failure", "lesson"],
-        })
+    # Gate failures are already in the event log — don't duplicate as memory files
 
     return memories
 

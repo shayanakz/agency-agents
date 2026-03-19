@@ -32,6 +32,7 @@ class EventType(str, Enum):
     LLM_CALL_START = "llm.call.start"
     LLM_CALL_COMPLETE = "llm.call.complete"
     LLM_CALL_ERROR = "llm.call.error"
+    LLM_PROGRESS = "llm.progress"       # intermediate progress during build
 
     # ── Gate evaluation ─────────────────────────────────
     GATE_EVALUATED = "gate.evaluated"

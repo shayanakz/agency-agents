@@ -31,9 +31,6 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
     output_dir = Path(state.get("output_dir", "./artifacts"))
     docs_dir = output_dir / "docs"
     docs_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "brainstorm.md").write_text(
-        json.dumps(parsed, indent=2), encoding="utf-8"
-    )
 
     # Guard against parse failures — don't propagate garbage as a valid brief
     if parsed.get("_parse_error"):
@@ -44,9 +41,56 @@ def _extract_outputs(parsed: dict[str, Any], state: PipelineState) -> dict[str, 
             "awaiting_approval": state.get("mode") == "supervised",
         }
 
+    brief = parsed.get("research_brief", parsed)
+    idea = parsed.get("validated_idea", {})
+
+    # Write brainstorm section to PROJECT_PLAN.md (will be extended by planning)
+    plan_path = docs_dir / "PROJECT_PLAN.md"
+    project_name = state.get("project_name", "Unnamed")
+    lines = [f"# Project Plan: {project_name}\n"]
+    lines.append("## Spec\n")
+    if brief.get("problem_statement"):
+        lines.append(f"**What:** {brief['problem_statement']}\n")
+    if brief.get("core_features"):
+        lines.append("**Core Features:**")
+        for f in brief["core_features"]:
+            name = f.get("name", f) if isinstance(f, dict) else f
+            lines.append(f"- {name}")
+        lines.append("")
+    if brief.get("out_of_scope"):
+        lines.append("**Out of Scope:**")
+        for s in brief["out_of_scope"]:
+            lines.append(f"- {s}" if isinstance(s, str) else f"- {json.dumps(s)}")
+        lines.append("")
+    if brief.get("phases"):
+        lines.append("**Implementation Phases:**")
+        for i, phase in enumerate(brief["phases"], 1):
+            name = phase.get("name", f"Phase {i}") if isinstance(phase, dict) else str(phase)
+            lines.append(f"\n### Phase {i}: {name}")
+            if isinstance(phase, dict):
+                if phase.get("description"):
+                    lines.append(phase["description"])
+                for task in phase.get("tasks", []):
+                    lines.append(f"- [ ] {task}" if isinstance(task, str) else f"- [ ] {json.dumps(task)}")
+        lines.append("")
+    if brief.get("tech_stack"):
+        lines.append("**Tech Stack:**")
+        stack = brief["tech_stack"]
+        if isinstance(stack, dict):
+            for k, v in stack.items():
+                lines.append(f"- {k}: {v}")
+        lines.append("")
+    if brief.get("risks"):
+        lines.append("**Risks:**")
+        for r in brief["risks"]:
+            lines.append(f"- {r}" if isinstance(r, str) else f"- {json.dumps(r)}")
+        lines.append("")
+
+    plan_path.write_text("\n".join(lines), encoding="utf-8")
+
     return {
-        "research_brief": parsed.get("research_brief", parsed),
-        "validated_idea": parsed.get("validated_idea", {}),
+        "research_brief": brief,
+        "validated_idea": idea,
         "current_stage": "brainstorm",
         "awaiting_approval": state.get("mode") == "supervised",
     }

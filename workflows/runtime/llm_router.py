@@ -14,6 +14,8 @@ import subprocess
 import time
 from typing import Any
 
+from .events import EventType, PipelineEvent, get_event_bus
+
 logger = logging.getLogger("pipeline.llm_router")
 
 
@@ -251,7 +253,8 @@ def _execute_claude_code(
             "claude",
             "--resume", session_id,
             "-p",
-            "--output-format", "json",
+            "--output-format", "stream-json",
+            "--verbose",
             "--model", model,
             "--max-turns", str(max_turns),
         ]
@@ -260,7 +263,8 @@ def _execute_claude_code(
         cmd = [
             "claude",
             "-p",
-            "--output-format", "json",
+            "--output-format", "stream-json",
+            "--verbose",
             "--model", model,
             "--max-turns", str(max_turns),
         ]
@@ -273,28 +277,110 @@ def _execute_claude_code(
         cmd.extend(flag_pair)
 
     start_time = time.monotonic()
+    bus = get_event_bus()
 
-    result = subprocess.run(
-        cmd,
-        input=full_prompt,
-        capture_output=True,
-        text=True,
-        cwd=working_dir,
-        timeout=600,
-    )
-    elapsed_ms = int((time.monotonic() - start_time) * 1000)
-
+    # Stream output line by line for real-time progress
     content = ""
     returned_session_id = session_id
-    try:
-        cli_output = json.loads(result.stdout)
-        content = cli_output.get("result", "")
-        returned_session_id = cli_output.get("session_id", session_id)
-    except (json.JSONDecodeError, TypeError):
-        content = result.stdout.strip() if result.stdout else ""
+    result_text = ""
 
-    if result.returncode != 0 and result.stderr:
-        content = f"ERROR: {result.stderr}\n\n{content}"
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,  # line-buffered for real-time streaming
+            cwd=working_dir,
+        )
+        if full_prompt:
+            proc.stdin.write(full_prompt)
+            proc.stdin.close()
+
+        # Read stream-json lines and emit progress events
+        # Format: {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Write", ...}]}}
+        #         {"type": "result", "result": "...", "session_id": "..."}
+        # Use readline() instead of iterator — the iterator buffers internally
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if not line:
+                continue
+            line = line.strip()
+            if not line:
+                continue
+            result_text += line + "\n"
+            try:
+                event = json.loads(line)
+                etype = event.get("type", "")
+
+                if etype == "assistant":
+                    msg = event.get("message", {})
+                    if isinstance(msg, dict):
+                        for block in msg.get("content", []):
+                            if not isinstance(block, dict):
+                                continue
+                            btype = block.get("type", "")
+                            if btype == "tool_use":
+                                tool_name = block.get("name", "")
+                                # Show meaningful tool descriptions
+                                tool_input = block.get("input", {})
+                                detail = ""
+                                if tool_name == "Write" and isinstance(tool_input, dict):
+                                    detail = tool_input.get("file_path", "")
+                                elif tool_name == "Edit" and isinstance(tool_input, dict):
+                                    detail = tool_input.get("file_path", "")
+                                elif tool_name == "Bash" and isinstance(tool_input, dict):
+                                    detail = tool_input.get("command", "")[:80]
+                                elif tool_name == "Read" and isinstance(tool_input, dict):
+                                    detail = tool_input.get("file_path", "")
+                                msg_text = f"Using {tool_name}" + (f": {detail}" if detail else "")
+                                bus.emit(PipelineEvent(
+                                    event_type=EventType.LLM_PROGRESS,
+                                    data={"message": msg_text[:200], "type": "tool_use", "tool": tool_name},
+                                ))
+                            elif btype == "text" and block.get("text", "").strip():
+                                text = block["text"].strip()
+                                if len(text) > 10:  # skip tiny fragments
+                                    bus.emit(PipelineEvent(
+                                        event_type=EventType.LLM_PROGRESS,
+                                        data={"message": text[:300], "type": "text"},
+                                    ))
+
+                elif etype == "result":
+                    content = event.get("result", content)
+                    returned_session_id = event.get("session_id", returned_session_id)
+
+            except json.JSONDecodeError:
+                pass
+
+        proc.wait(timeout=600)
+        stderr = proc.stderr.read()
+
+        if proc.returncode != 0 and stderr:
+            content = f"ERROR: {stderr}\n\n{content}"
+
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        content = "ERROR: Claude Code timed out after 600 seconds"
+    except Exception as exc:
+        content = f"ERROR: {exc}"
+
+    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+
+    # If we didn't get content from stream, try parsing the full output
+    if not content and result_text:
+        for line in reversed(result_text.strip().split("\n")):
+            try:
+                event = json.loads(line)
+                if event.get("type") == "result":
+                    content = event.get("result", "")
+                    returned_session_id = event.get("session_id", returned_session_id)
+                    break
+            except json.JSONDecodeError:
+                continue
 
     return {
         "content": content,
@@ -304,7 +390,7 @@ def _execute_claude_code(
         "latency_ms": elapsed_ms,
         "usage": {},
         "session_id": returned_session_id,
-        "mcp_unavailable": mcp_unavailable,  # empty list = all servers connected
+        "mcp_unavailable": mcp_unavailable,
     }
 
 

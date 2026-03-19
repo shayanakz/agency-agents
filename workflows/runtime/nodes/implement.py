@@ -20,39 +20,63 @@ logger = logging.getLogger("pipeline.nodes.implement")
 
 
 def _build_prompt(agent: dict, state: PipelineState) -> str:
-    current_task = state.get("current_task", {})
-    task_idx = state.get("current_task_index", 0)
-    total = state.get("total_tasks", 0)
     project_dir = state.get("project_dir", "./projects/unnamed")
+    backlog = state.get("sprint_backlog", {})
+    tasks = backlog.get("tasks", []) if isinstance(backlog, dict) else []
+    architecture = state.get("architecture", {})
+    project_name = state.get("project_name", "Unknown")
 
     parts = [
-        f"**Project directory:** `{project_dir}`  ← write ALL files here\n",
-        f"Implement task {task_idx + 1} of {total}:\n",
-        f"**Task:** {current_task.get('title', 'Unknown')}\n",
-        f"**Description:** {current_task.get('description', '')}\n",
-        f"**Category:** {current_task.get('category', 'fullstack')}\n",
-        "**Acceptance Criteria:**",
+        f"# Build: {project_name}",
+        f"**Project directory:** `{project_dir}` — write ALL files here.\n",
+        "Build the COMPLETE project. Scaffold first, then implement each feature.",
+        "Start with project setup (package.json/requirements.txt, folder structure, config),",
+        "then implement each task below.\n",
     ]
-    for criterion in current_task.get("acceptance_criteria", []):
-        parts.append(f"- {criterion}")
 
-    # Add fix instructions if this is a retry
+    # All tasks
+    if tasks:
+        parts.append("## Tasks to Implement\n")
+        for i, task in enumerate(tasks):
+            parts.append(f"### Task {i + 1}: {task.get('title', 'Unnamed')}")
+            if task.get("description"):
+                parts.append(task["description"])
+            criteria = task.get("acceptance_criteria", [])
+            if criteria:
+                parts.append("**Acceptance Criteria:**")
+                for c in criteria:
+                    parts.append(f"- {c}")
+            parts.append("")
+
+    # Architecture context
+    if architecture and isinstance(architecture, dict):
+        tech = architecture.get("tech_stack", {})
+        if tech:
+            parts.append("## Tech Stack")
+            for k, v in (tech.items() if isinstance(tech, dict) else []):
+                parts.append(f"- **{k}:** {v}")
+            parts.append("")
+
+    # Fix instructions if this is a retry
     fix_instructions = state.get("fix_instructions")
     if fix_instructions and isinstance(fix_instructions, list):
-        parts.append("\n**FIX INSTRUCTIONS (from previous rejection):**")
+        parts.append("## FIX THESE ISSUES FIRST (from previous review)\n")
         for fix in fix_instructions:
             if isinstance(fix, dict):
-                parts.append(f"- Issue {fix.get('issue_id', '?')}: {fix.get('instruction', '')}")
+                parts.append(f"- {fix.get('instruction', fix)}")
+            else:
+                parts.append(f"- {fix}")
+        parts.append("")
 
-    # Add previous review feedback if retrying
+    # Previous review feedback
     review = state.get("review_verdict")
     if review and isinstance(review, dict) and review.get("status") in ("CHANGES_REQUESTED", "REJECTED"):
-        parts.append("\n**PREVIOUS CODE REVIEW FEEDBACK:**")
+        parts.append("## Previous Code Review Feedback\n")
         for comment in review.get("comments", []):
             if isinstance(comment, dict):
                 parts.append(f"- [{comment.get('severity', '?')}] {comment.get('file', '?')}:{comment.get('line', '?')} — {comment.get('comment', '')}")
+        parts.append("")
 
-    parts.append("\n" + build_inputs_summary(agent, state))
     return "\n".join(parts)
 
 

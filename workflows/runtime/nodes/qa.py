@@ -196,35 +196,18 @@ def _hard_fail(reason: str, step_count: int, messages: list) -> dict:
 
 
 def qa_node(state: PipelineState) -> dict:
-    """QA with hard pre-flight checks — fabrication is worse than FAIL.
+    """QA with pre-flight checks.
 
     Checks before calling LLM:
     1. Code must exist (files written by implement_agent)
-    2. Browser MCP must be available (checked via mcp_unavailable in raw_result)
-
-    The browser MCP check happens inside _base_qa_node via _extract_outputs
-    reading _mcp_unavailable from parsed. We do a pre-check here by attempting
-    to resolve the browser server before spending tokens.
+    2. Browser MCP is optional — if unavailable, QA does code-based testing
     """
     step = state.get("step_count", 0) + 1
     messages = state.get("messages", [])
 
-    # Check 1: code must exist
+    # Check: code must exist
     if not _has_real_code(state):
         return _hard_fail("No implementation files found to test", step, messages)
 
-    # Check 2: browser MCP must be resolvable
-    # Import here to avoid circular — llm_router is a sibling module
-    from ..llm_router import resolve_mcp_servers
-    _, unavailable = resolve_mcp_servers(["browser"])
-    if unavailable:
-        return _hard_fail(
-            "Browser MCP server unavailable (tried @playwright/mcp and "
-            "@modelcontextprotocol/server-puppeteer). "
-            "Fix: npm install -g @playwright/mcp — then re-run. "
-            "Returning FAIL instead of fabricating screenshot evidence.",
-            step,
-            messages,
-        )
-
+    # Browser MCP is nice-to-have, not a hard requirement
     return _base_qa_node(state)

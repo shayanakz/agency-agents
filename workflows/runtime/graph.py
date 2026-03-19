@@ -54,16 +54,19 @@ def route_after_brainstorm(state: PipelineState) -> str:
 def route_after_planning(state: PipelineState) -> str:
     if _is_supervised(state):
         return "await_approval"
-    return "schema_verify_agent"
+    # Skip schema verify — go straight to build. The implement agent
+    # with sonnet/30 turns is better at catching schema issues during
+    # implementation than a separate verify step.
+    return "prepare_build"
 
 
 def route_after_schema_verify(state: PipelineState) -> str:
-    # If schema verified OR we've retried enough, move to delivery
+    # If schema verified OR we've retried enough, move to build
     if state.get("schema_valid") or state.get("verified_schema"):
-        return "load_next_task"
+        return "implement_agent"
     schema_retries = state.get("schema_retry_count", 0)
     if schema_retries >= 2:
-        return "load_next_task"
+        return "implement_agent"
     return "planning_agent"
 
 
@@ -72,11 +75,6 @@ def route_after_reality_check(state: PipelineState) -> str:
     status = verdict.get("status", "NEEDS_WORK") if isinstance(verdict, dict) else "NEEDS_WORK"
 
     if status == "READY":
-        task_idx = state.get("current_task_index", 0)
-        total = state.get("total_tasks", 0)
-        if task_idx + 1 < total:
-            return "advance_task"
-        # All tasks done — pause before deploy in supervised, auto in autonomous
         if _is_supervised(state):
             return "await_approval"
         return "deploy_agent"
@@ -86,23 +84,13 @@ def route_after_reality_check(state: PipelineState) -> str:
         max_attempts = state.get("max_attempts", 5)
         if attempts >= max_attempts:
             if _is_supervised(state):
-                return "await_approval"  # escalate to human
-            # Autonomous: accept current state and move on
-            task_idx = state.get("current_task_index", 0)
-            total = state.get("total_tasks", 0)
-            if task_idx + 1 < total:
-                return "advance_task"
-            return "deploy_agent"
-        return "implement_agent"
+                return "await_approval"
+            return "deploy_agent"  # give up, deploy what we have
+        return "implement_agent"  # retry the whole build
 
     # BLOCKED
     if _is_supervised(state):
         return "await_approval"
-    # Autonomous: skip blocked task, move on
-    task_idx = state.get("current_task_index", 0)
-    total = state.get("total_tasks", 0)
-    if task_idx + 1 < total:
-        return "advance_task"
     return "deploy_agent"
 
 
@@ -174,58 +162,13 @@ def await_approval_node(state: PipelineState) -> dict:
     return {"awaiting_approval": False}
 
 
-def load_next_task_node(state: PipelineState) -> dict:
-    """Load the first task from the sprint backlog into current_task."""
-    backlog = state.get("sprint_backlog", {})
-    tasks = backlog.get("tasks", [])
-    idx = state.get("current_task_index", 0)
-
-    if idx < len(tasks):
-        return {
-            "current_task": tasks[idx],
-            "attempt_count": 0,
-            "current_stage": "delivery",
-            "previous_outputs": [],
-            "session_ids": {},  # Fresh sessions for first task
-        }
-    return {"current_stage": "deployment"}
-
-
-def advance_task_node(state: PipelineState) -> dict:
-    """Advance to the next task in the sprint backlog."""
-    backlog = state.get("sprint_backlog", {})
-    tasks = backlog.get("tasks", [])
-    idx = state.get("current_task_index", 0) + 1
-
-    # Save completed task
-    completed = state.get("completed_tasks", [])
-    current = state.get("current_task", {})
-    if current:
-        completed = completed + [
-            {
-                "task": current,
-                "reality_verdict": state.get("reality_verdict"),
-            }
-        ]
-
-    if idx < len(tasks):
-        return {
-            "current_task_index": idx,
-            "current_task": tasks[idx],
-            "attempt_count": 0,
-            "completed_tasks": completed,
-            # Clear per-task state
-            "code_artifact": None,
-            "review_verdict": None,
-            "qa_report": None,
-            "reality_verdict": None,
-            "fix_instructions": None,
-            "previous_outputs": [],
-            "session_ids": {},  # New task → new sessions for coding agents
-        }
+def prepare_build_node(state: PipelineState) -> dict:
+    """Prepare state for the build phase — load all tasks as a batch."""
     return {
-        "completed_tasks": completed,
-        "current_stage": "deployment",
+        "attempt_count": 0,
+        "current_stage": "delivery",
+        "previous_outputs": [],
+        "session_ids": {},
     }
 
 
@@ -247,14 +190,13 @@ def build_graph(checkpoint_path: str = "./state/checkpoints.db") -> StateGraph:
     builder.add_node("brainstorm_agent", brainstorm_node)
     builder.add_node("planning_agent", planning_node)
     builder.add_node("schema_verify_agent", schema_verify_node)
+    builder.add_node("prepare_build", prepare_build_node)
     builder.add_node("implement_agent", implement_node)
     builder.add_node("code_review_agent", code_review_node)
     builder.add_node("qa_agent", qa_node)
     builder.add_node("reality_check_agent", reality_check_node)
     builder.add_node("deploy_agent", deploy_node)
     builder.add_node("await_approval", await_approval_node)
-    builder.add_node("load_next_task", load_next_task_node)
-    builder.add_node("advance_task", advance_task_node)
 
     # ── Set entry point ─────────────────────────────────────────
     builder.set_entry_point("brainstorm_agent")
@@ -270,42 +212,33 @@ def build_graph(checkpoint_path: str = "./state/checkpoints.db") -> StateGraph:
     builder.add_conditional_edges(
         "planning_agent",
         route_after_planning,
-        {"await_approval": "await_approval", "schema_verify_agent": "schema_verify_agent"},
+        {"await_approval": "await_approval", "prepare_build": "prepare_build"},
     )
 
     builder.add_conditional_edges(
         "schema_verify_agent",
         route_after_schema_verify,
-        {"load_next_task": "load_next_task", "planning_agent": "planning_agent"},
+        {"implement_agent": "prepare_build", "planning_agent": "planning_agent"},
     )
 
-    # Load task → implement
-    builder.add_edge("load_next_task", "implement_agent")
+    # Prepare build → implement (builds ALL tasks in one shot)
+    builder.add_edge("prepare_build", "implement_agent")
 
-    # Implement → always goes to code review
+    # Implement → code review → QA → reality check (single pass)
     builder.add_edge("implement_agent", "code_review_agent")
-
-    # Code review always flows to QA — review findings are recorded
-    # in state but retries are only triggered by reality_check
     builder.add_edge("code_review_agent", "qa_agent")
-
-    # QA always goes to reality_check — reality_check is the gate
-    # that decides retry vs advance (has the attempt counter)
     builder.add_edge("qa_agent", "reality_check_agent")
 
+    # Reality check decides: retry build or deploy
     builder.add_conditional_edges(
         "reality_check_agent",
         route_after_reality_check,
         {
             "deploy_agent": "deploy_agent",
             "implement_agent": "implement_agent",
-            "advance_task": "advance_task",
             "await_approval": "await_approval",
         },
     )
-
-    # Advance task → back to implement
-    builder.add_edge("advance_task", "implement_agent")
 
     # Approval routing
     builder.add_conditional_edges(
